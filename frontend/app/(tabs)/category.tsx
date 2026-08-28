@@ -871,10 +871,36 @@ const TableItemComponent = React.memo(
               justifyContent: "center",
               alignItems: "center",
               borderRadius: 12,
+              position: "relative",
             },
           ]}
           onPress={() => onPress(item, tableData)}
         >
+          {/* 🚀 HOLD OVERTIME INDICATOR (H) */}
+          {status === 3 && !!tableData?.isHoldOvertime && (
+            <View style={styles.holdOvertimeBadge}>
+              <MaterialCommunityIcons
+                name="alpha-h-circle"
+                size={Math.max(14, itemSize * 0.18)}
+                color={Theme.primary}
+              />
+            </View>
+          )}
+
+          {/* 🚀 QR ORDER INDICATOR (QR badge) */}
+          {((tableData?.entryStatus !== undefined && tableData?.entryStatus !== null)
+            ? tableData.entryStatus
+            : item.entryStatus) === "q" &&
+            status !== 0 && (
+              <View style={styles.qrBadge}>
+                <Ionicons
+                  name="qr-code"
+                  size={Math.max(14, itemSize * 0.18)}
+                  color={ui.color}
+                />
+              </View>
+            )}
+
           <Text
             style={[
               styles.tableNumber,
