@@ -542,7 +542,7 @@ const TableItemComponent = React.memo(
 
     // 🌹 QR PAID: entryStatus='q' + paymentStatus=1 → Rose card + "Paid" label
     const rawEntryStatus =
-      tableData?.entryStatus !== undefined
+      (tableData?.entryStatus !== undefined && tableData?.entryStatus !== null)
         ? tableData.entryStatus
         : item.entryStatus;
     const rawPaymentStatus =
@@ -1106,7 +1106,32 @@ const TableItemComponent = React.memo(
               borderColor: status === 0 ? "rgba(163, 117, 78, 0.25)" : "rgba(255, 255, 255, 0.4)",
               justifyContent: "center",
               alignItems: "center",
+              position: "relative",
             }}>
+              {/* 🚀 HOLD OVERTIME INDICATOR (H) */}
+              {status === 3 && !!tableData?.isHoldOvertime && (
+                <View style={styles.holdOvertimeBadge}>
+                  <MaterialCommunityIcons
+                    name="alpha-h-circle"
+                    size={Math.max(14, Math.min(tableW, tableH) * 0.18)}
+                    color={Theme.primary}
+                  />
+                </View>
+              )}
+
+              {/* 🚀 QR ORDER INDICATOR (QR badge) */}
+              {((tableData?.entryStatus !== undefined && tableData?.entryStatus !== null)
+                ? tableData.entryStatus
+                : item.entryStatus) === "q" &&
+                status !== 0 && (
+                  <View style={styles.qrBadge}>
+                    <Ionicons
+                      name="qr-code"
+                      size={Math.max(14, Math.min(tableW, tableH) * 0.18)}
+                      color={ui.color}
+                    />
+                  </View>
+                )}
           <Text
             style={[
               styles.tableNumber,
@@ -1221,30 +1246,7 @@ const TableItemComponent = React.memo(
           </LinearGradient>
         </View>
 
-        {/* 🚀 HOLD OVERTIME INDICATOR (H) */}
-        {status === 3 && !!tableData?.isHoldOvertime && (
-          <View style={styles.holdOvertimeBadge}>
-            <MaterialCommunityIcons
-              name="alpha-h-circle"
-              size={Math.max(14, itemSize * 0.18)}
-              color={Theme.primary}
-            />
-          </View>
-        )}
 
-        {/* 🚀 QR ORDER INDICATOR (QR badge) */}
-        {(tableData?.entryStatus !== undefined
-          ? tableData.entryStatus
-          : item.entryStatus) === "q" &&
-          status !== 0 && (
-            <View style={styles.qrBadge}>
-              <Ionicons
-                name="qr-code"
-                size={Math.max(14, itemSize * 0.18)}
-                color={ui.color}
-              />
-            </View>
-          )}
           {/* 🟢 LIVE TERMINAL INDICATOR: top-left spinner for processing, circular red error badge when cancelled/failed */}
           {terminalStatus && terminalStatus !== "idle" && (
             <TouchableOpacity
