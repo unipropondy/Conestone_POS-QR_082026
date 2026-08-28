@@ -23,7 +23,7 @@ export const API_URL = __DEV__
   : (process.env.EXPO_PUBLIC_API_URL ??
      (Platform.OS === "web" && typeof window !== "undefined"
        ? `${window.location.protocol}//${window.location.hostname}${window.location.port ? `:${window.location.port}` : ""}`
-       : "https://pos-v-20-production.up.railway.app"));
+       : "https://conestonepos-qr082026-production.up.railway.app"));
 
 
 if (__DEV__) {
