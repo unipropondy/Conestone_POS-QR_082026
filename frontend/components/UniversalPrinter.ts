@@ -4,7 +4,24 @@ import { format } from "date-fns";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { Alert, Platform } from "react-native";
-import ThermalPrinter from "react-native-thermal-printer";
+import ThermalPrinterImport from "react-native-thermal-printer";
+
+// Safe wrapper around react-native-thermal-printer to prevent null-reference crashes
+const ThermalPrinter = {
+  printTcp: async (args: any) => {
+    if (!ThermalPrinterImport || typeof ThermalPrinterImport.printTcp !== "function") {
+      throw new Error("ThermalPrinter module is not available on this device/platform");
+    }
+    return ThermalPrinterImport.printTcp(args);
+  },
+  printBluetooth: async (args: any) => {
+    if (!ThermalPrinterImport || typeof ThermalPrinterImport.printBluetooth !== "function") {
+      throw new Error("ThermalPrinter module is not available on this device/platform");
+    }
+    return ThermalPrinterImport.printBluetooth(args);
+  }
+};
+
 import { API_URL } from "../constants/Config";
 import { formatToSingaporeDate, formatToSingaporeTime, formatToSingaporeDateTime, parseDatabaseDate } from "../utils/timezoneHelper";
 import BillPDFGenerator from "./BillPDFGenerator";

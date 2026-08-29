@@ -427,7 +427,7 @@ const getStatusUI = (status: number, diningSection?: number) => {
       }
       return { text: "DINING", color: "#22c55e", lightBg: "#F0FDF4" };
     case 2:
-      return { text: "CHECKOUT", color: "#fd7e14", lightBg: "#FFF7ED" };
+      return { text: "CHECKOUT", color: "#F59E0B", lightBg: "#FFFBEB" };
     case 3:
       return { text: "HOLD", color: "#3b82f6", lightBg: "#F0F9FF" };
     case 4:
@@ -644,7 +644,7 @@ const TableItemComponent = React.memo(
             activeBg = "#FFFFFF";
             break;
           case 2: // Checkout
-            activeColor = "#F97316";
+            activeColor = "#F59E0B";
             activeBg = "#FFFFFF";
             break;
           case 3: // Hold
@@ -787,9 +787,9 @@ const TableItemComponent = React.memo(
           gradientColors = ["#F0FDF4", "#DCFCE7"];
           tableBorderColor = "#22c55e";
           break;
-        case 2: // Checkout (Subtle Orange)
-          gradientColors = ["#FFF7ED", "#FFEDD5"];
-          tableBorderColor = "#fd7e14";
+        case 2: // Checkout (Subtle Yellow/Amber)
+          gradientColors = ["#FFFBEB", "#FEF3C7"];
+          tableBorderColor = "#F59E0B";
           break;
         case 3: // Hold (Subtle Blue)
           gradientColors = ["#F0F9FF", "#E0F2FE"];
@@ -906,8 +906,7 @@ const TableItemComponent = React.memo(
               styles.tableNumber,
               { 
                 fontSize: numberFont, 
-                color: labelColor, 
-                fontFamily: Fonts.black,
+                color: "#000000", 
                 fontWeight: "900"
               },
             ]}
@@ -1163,10 +1162,9 @@ const TableItemComponent = React.memo(
               styles.tableNumber,
               { 
                 fontSize: Math.max(12, numberFont * (tableW / itemSize) * 0.9), 
-                color: labelColor, 
+                color: "#000000", 
                 marginTop: 0, 
                 marginBottom: 0,
-                fontFamily: Fonts.black,
                 fontWeight: "900"
               },
             ]}
@@ -6157,7 +6155,7 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   tableNumber: {
-    fontFamily: Fonts.black,
+    fontWeight: "900",
     color: Theme.textPrimary,
     marginTop: 4,
     marginBottom: 2,
@@ -6376,7 +6374,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 8,
     right: 8,
-    backgroundColor: "#fd7e14",
+    backgroundColor: "#F59E0B",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,

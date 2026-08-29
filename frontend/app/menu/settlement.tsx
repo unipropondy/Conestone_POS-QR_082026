@@ -1818,8 +1818,11 @@ const fetchDayHistory = async () => {
           const ipReachable = await checkIpReachable(cashierIp.trim());
 
           if (ipReachable) {
-            const ThermalPrinter = require("react-native-thermal-printer").default;
-            await ThermalPrinter.printTcp({
+            const ThermalPrinterModule = require("react-native-thermal-printer").default;
+            if (!ThermalPrinterModule || typeof ThermalPrinterModule.printTcp !== "function") {
+              throw new Error("ThermalPrinter module is not available on this device/platform");
+            }
+            await ThermalPrinterModule.printTcp({
               ip: cashierIp.trim(),
               port: 9100,
               payload: text,

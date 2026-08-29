@@ -14,6 +14,7 @@ import {
   Image,
   Modal,
   Dimensions,
+  Pressable,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { API_URL } from "../../constants/Config";
@@ -78,6 +79,11 @@ export default function CustomerWelcomeScreen() {
   const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [popupConfig, setPopupConfig] = useState<{ title: string; message: string } | null>(null);
+  const [promoImages, setPromoImages] = useState<any[]>([]);
+  const [currentPromoIndex, setCurrentPromoIndex] = useState<number>(0);
+  const [showPromoModal, setShowPromoModal] = useState<boolean>(false);
+  const [promoModalDismissed, setPromoModalDismissed] = useState<boolean>(false);
+  const [isCloseHovered, setIsCloseHovered] = useState(false);
 
   const [authLoading, setAuthLoading] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
@@ -99,6 +105,108 @@ export default function CustomerWelcomeScreen() {
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(25)).current;
   const tabAnim   = useRef(new Animated.Value(0)).current;
+  const closeScale = useRef(new Animated.Value(1)).current;
+  const imageScale = useRef(new Animated.Value(1)).current;
+  const imageFadeAnim = useRef(new Animated.Value(1)).current;
+  const imageTransitionScale = useRef(new Animated.Value(1)).current;
+
+  const handleCloseHover = (hovered: boolean) => {
+    Animated.timing(closeScale, {
+      toValue: hovered ? 1.15 : 1,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleImageHover = (hovered: boolean) => {
+    Animated.timing(imageScale, {
+      toValue: hovered ? 1.04 : 1,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const touchStartX = useRef<number | null>(null);
+
+  const goToNextPromo = () => {
+    if (promoImages.length <= 1) return;
+    Animated.parallel([
+      Animated.timing(imageFadeAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(imageTransitionScale, {
+        toValue: 0.94,
+        duration: 150,
+        useNativeDriver: true,
+      })
+    ]).start(() => {
+      setCurrentPromoIndex((prev) => (prev + 1) % promoImages.length);
+      Animated.parallel([
+        Animated.timing(imageFadeAnim, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(imageTransitionScale, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        })
+      ]).start();
+    });
+  };
+
+  const goToPrevPromo = () => {
+    if (promoImages.length <= 1) return;
+    Animated.parallel([
+      Animated.timing(imageFadeAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(imageTransitionScale, {
+        toValue: 0.94,
+        duration: 150,
+        useNativeDriver: true,
+      })
+    ]).start(() => {
+      setCurrentPromoIndex((prev) => (prev - 1 + promoImages.length) % promoImages.length);
+      Animated.parallel([
+        Animated.timing(imageFadeAnim, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(imageTransitionScale, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        })
+      ]).start();
+    });
+  };
+
+  const handleTouchStart = (e: any) => {
+    touchStartX.current = e.nativeEvent.pageX;
+  };
+
+  const handleTouchEnd = (e: any) => {
+    if (touchStartX.current === null) return;
+    const touchEndX = e.nativeEvent.pageX;
+    const distance = touchEndX - touchStartX.current;
+
+    // Minimum swipe distance threshold (50px)
+    if (Math.abs(distance) > 50) {
+      if (distance > 0) {
+        goToPrevPromo();
+      } else {
+        goToNextPromo();
+      }
+    }
+    touchStartX.current = null;
+  };
 
   const foodEmojis = ["🍕", "🍔", "🌮", "🍜", "🍰", "☕"];
 
@@ -159,7 +267,42 @@ export default function CustomerWelcomeScreen() {
       Animated.timing(fadeAnim,  { toValue: 1, duration: 450, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 0, duration: 450, useNativeDriver: true }),
     ]).start();
+
+    // Fetch active promo images
+    const fetchPromoImages = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/members/active-promo-image`);
+        const data = await res.json();
+        if (data.success) {
+          if (data.promoImages && data.promoImages.length > 0) {
+            setPromoImages(data.promoImages);
+            setShowPromoModal(true);
+          } else if (data.promoImage) {
+            setPromoImages([{
+              promoImage: data.promoImage,
+              promoCode: data.promoCode || "",
+              promoName: data.promoName || ""
+            }]);
+            setShowPromoModal(true);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch active promo images:", err);
+      }
+    };
+    fetchPromoImages();
   }, []);
+
+  // Slideshow rotation effect (every 2 seconds) with fade transition
+  useEffect(() => {
+    if (!showPromoModal || promoImages.length <= 1) return;
+
+    const interval = setInterval(() => {
+      goToNextPromo();
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [showPromoModal, promoImages, currentPromoIndex]);
 
   useEffect(() => {
     if (scannedTable) return;
@@ -276,6 +419,10 @@ export default function CustomerWelcomeScreen() {
   };
 
   const handleSignIn = async () => {
+    if (promoImages.length > 0 && !promoModalDismissed) {
+      setShowPromoModal(true);
+      return;
+    }
     if (!loginUsername.trim() || !loginPassword.trim()) {
       showPopup("Error", "Please enter your Email/Mobile Number and Password.");
       return;
@@ -313,6 +460,10 @@ export default function CustomerWelcomeScreen() {
   };
 
   const handleSignUp = async () => {
+    if (promoImages.length > 0 && !promoModalDismissed) {
+      setShowPromoModal(true);
+      return;
+    }
     if (!regUsername.trim() || !regPhone.trim() || !regPassword.trim()) {
       showPopup("Error", "Please fill out all required fields.");
       return;
@@ -358,6 +509,10 @@ export default function CustomerWelcomeScreen() {
   };
 
   const handleGuest = () => {
+    if (promoImages.length > 0 && !promoModalDismissed) {
+      setShowPromoModal(true);
+      return;
+    }
     setTransitioning(true);
     setTimeout(() => {
       const guestUser = { userName: "Guest", fullName: "Guest Customer" };
@@ -642,6 +797,76 @@ export default function CustomerWelcomeScreen() {
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
+        </Modal>
+      )}
+
+      {/* Promo Code Image Modal */}
+      {showPromoModal && promoImages.length > 0 && (
+        <Modal transparent visible={showPromoModal} animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.promoModalContent}>
+              {/* Close Button on Top Right */}
+              <Animated.View style={{ transform: [{ scale: closeScale }], position: "absolute", top: 16, right: 16, zIndex: 20 }}>
+                <Pressable
+                  onHoverIn={() => {
+                    handleCloseHover(true);
+                    setIsCloseHovered(true);
+                  }}
+                  onHoverOut={() => {
+                    handleCloseHover(false);
+                    setIsCloseHovered(false);
+                  }}
+                  style={({ hovered }) => [
+                    styles.promoTopCloseBtn,
+                    hovered && styles.promoTopCloseBtnHover
+                  ]}
+                  onPress={() => {
+                    setShowPromoModal(false);
+                    setPromoModalDismissed(true);
+                  }}
+                >
+                  <Ionicons name="close" size={20} color={isCloseHovered ? "#FFFFFF" : "#E2E8F0"} />
+                </Pressable>
+              </Animated.View>
+
+              <Text style={styles.promoModalTitle}>Welcome Special Offer!</Text>
+              
+              <Animated.View 
+                style={{ transform: [{ scale: imageScale }], width: "100%", alignItems: "center" }}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+              >
+                <Pressable
+                  onHoverIn={() => handleImageHover(true)}
+                  onHoverOut={() => handleImageHover(false)}
+                  style={{ width: "100%" }}
+                >
+                  <Animated.View style={{ opacity: imageFadeAnim, transform: [{ scale: imageTransitionScale }], width: "100%" }}>
+                    <Image 
+                      source={{ uri: promoImages[currentPromoIndex]?.promoImage }} 
+                      style={styles.promoImage} 
+                      resizeMode="contain"
+                    />
+                  </Animated.View>
+                </Pressable>
+              </Animated.View>
+
+              {/* Pagination Dots */}
+              {promoImages.length > 1 && (
+                <View style={styles.promoPagination}>
+                  {promoImages.map((_, idx) => (
+                    <View 
+                      key={idx} 
+                      style={[
+                        styles.promoDot, 
+                        idx === currentPromoIndex && styles.promoDotActive
+                      ]} 
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
         </Modal>
       )}
 
@@ -1220,6 +1445,73 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "800",
     color: "#FFFFFF",
+  },
+
+  // Promo Modal Styles
+  promoModalContent: {
+    width: "90%",
+    maxWidth: 400,
+    backgroundColor: "#1E293B",
+    borderRadius: 28,
+    padding: 24,
+    alignItems: "center",
+    shadowColor: C.orangePrimary,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.4,
+    shadowRadius: 24,
+    elevation: 20,
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 94, 26, 0.35)",
+  },
+  promoModalTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    marginBottom: 18,
+    textAlign: "center",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    textShadowColor: "rgba(255, 94, 26, 0.5)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
+  },
+  promoImage: {
+    width: "100%",
+    height: 300,
+    borderRadius: 20,
+    marginBottom: 16,
+    backgroundColor: "#0F172A",
+  },
+  promoTopCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  promoTopCloseBtnHover: {
+    backgroundColor: C.orangePrimary,
+    borderColor: "#FFFFFF",
+  },
+  promoPagination: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+  },
+  promoDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+  },
+  promoDotActive: {
+    backgroundColor: C.orangePrimary,
+    width: 22,
   },
 
   // Transition Screen Overlay
