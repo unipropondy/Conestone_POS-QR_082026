@@ -1039,26 +1039,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     width: "100%",
-    ...Platform.select({
-      web: {
-        minHeight: "100vh",
-      } as any,
-    }),
+    height: "100%",
   },
   root: {
     flex: 1,
     width: "100%",
+    maxWidth: 440,
     backgroundColor: C.bg,
     alignSelf: "center",
     ...Platform.select({
       web: {
-        maxWidth: 420,
-        height: "90vh",
-        maxHeight: 840,
-        borderRadius: 40,
-        borderWidth: 8,
-        borderColor: "#1E293B",
-        boxShadow: "0px 12px 40px rgba(0, 0, 0, 0.18)",
+        height: "100vh",
+        boxShadow: "0px 8px 32px rgba(0, 0, 0, 0.12)",
         overflow: "hidden",
       } as any,
     }),
