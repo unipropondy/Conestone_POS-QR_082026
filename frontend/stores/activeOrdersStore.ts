@@ -374,7 +374,11 @@ const storeCreator: StateCreator<
       
       set({ isFetching: true });
       try {
-        const res = await fetch(`${API_URL}/api/orders/active-kitchen`);
+        const res = await fetch(`${API_URL}/api/orders/active-kitchen`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
         if (!res.ok) throw new Error("Failed to fetch active kitchen orders");
         const result = await res.json();
         const ordersFromApi = result.orders || (Array.isArray(result) ? result : []);

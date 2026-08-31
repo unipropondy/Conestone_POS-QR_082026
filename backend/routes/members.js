@@ -110,8 +110,17 @@ router.post("/deduct-promo", async (req, res) => {
   }
 });
 
+let promoImageCache = null;
+let promoImageCacheTime = 0;
+const CACHE_TTL = 60000; // 60 seconds
+
 router.get("/active-promo-image", async (req, res) => {
   try {
+    const now = Date.now();
+    if (promoImageCache && (now - promoImageCacheTime < CACHE_TTL)) {
+      return res.json(promoImageCache);
+    }
+
     const pool = await poolPromise;
     const result = await pool.request().query(`
       SELECT PromoImage, PromoCode, PromoName
@@ -132,10 +141,15 @@ router.get("/active-promo-image", async (req, res) => {
       };
     });
 
-    return res.json({
+    const responseData = {
       success: true,
       promoImages
-    });
+    };
+
+    promoImageCache = responseData;
+    promoImageCacheTime = now;
+
+    return res.json(responseData);
   } catch (err) {
     console.error("[GET ACTIVE PROMO IMAGE ERROR]", err);
     res.status(500).json({ success: false, error: err.message });

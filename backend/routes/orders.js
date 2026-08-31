@@ -1144,9 +1144,8 @@ router.post("/save-cart", async (req, res) => {
         });
       }
 
-      if (!skipTableStatusSync) {
-        syncTableStatus(req, cleanId).catch(() => { });
-      }
+      // Always sync table status to update the payable amount instantly on the main grid via socket/db
+      syncTableStatus(req, cleanId).catch(() => { });
     } catch (e) {
       if (transaction._isStarted) await transaction.rollback();
       console.error("❌ SaveCart SQL Error FULL:", e);
@@ -2276,6 +2275,98 @@ router.get("/active-kitchen", async (req, res) => {
   }
 });
 
+router.get("/active-sessions", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      SELECT 
+        d.OrderDetailId as lineItemId, d.DishId as id, d.Quantity as qty, d.StatusCode, 
+        d.PricePerUnit as price,
+        h.OrderNumber as orderId, dish.Name as name, h.Tableno as tableNo, 
+        d.Remarks as note, d.ModifiersJSON, d.ComboDetailsJSON, d.isTakeAway, 
+        DATEDIFF(SECOND, ISNULL(d.CreatedOn, h.CreatedOn), GETDATE()) as elapsedSeconds,
+        ISNULL(ckt.KitchenTypeCode, '0') as KitchenTypeCode, 
+        ISNULL(ISNULL(ckt.KitchenTypeName, cat.CategoryName), 'KITCHEN') as KitchenTypeName,
+        pm.PrinterPath as PrinterIP,
+        tm.TableId, tm.DiningSection, tm.entry_status, tm.PAYMENT_STATUS, tm.Status
+      FROM RestaurantOrderDetailCur d 
+      JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId 
+      LEFT JOIN DishMaster dish ON d.DishId = dish.DishId
+      LEFT JOIN DishGroupMaster dgm ON dish.DishGroupId = dgm.DishGroupId
+      LEFT JOIN CategoryMaster cat ON dgm.CategoryId = cat.CategoryId
+      LEFT JOIN CategoryKitchenType ckt ON dgm.CategoryId = ckt.CategoryId
+      LEFT JOIN (
+        SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn
+        FROM PrintMaster WHERE IsActive = 1 AND IsEnabled = 1 AND PrinterType = 2
+      ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
+      LEFT JOIN TableMaster tm ON RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(tm.TableNumber))
+      WHERE (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
+      -- 🚀 Include all non-voided items: NEW (1), SENT (2), READY (3), SERVED (4), HOLD (5)
+      AND d.StatusCode <> 0
+      AND h.OrderNumber IS NOT NULL
+      AND h.OrderNumber NOT LIKE 'TEMP-%'
+      AND h.OrderNumber NOT IN ('PENDING', 'NEW', '#NEW', '')
+      ORDER BY d.CreatedOn ASC
+    `);
+    const orders = {};
+    result.recordset.forEach((row) => {
+      if (!orders[row.orderId]) {
+        const isTakeaway =
+          !row.tableNo ||
+          row.tableNo === "TAKEAWAY" ||
+          String(row.tableNo).trim().startsWith("TW");
+        const sectionMap = {
+          1: "SECTION_1",
+          2: "SECTION_2",
+          3: "SECTION_3",
+          4: "TAKEAWAY",
+        };
+        const normalizedSection =
+          sectionMap[String(row.DiningSection)] || row.DiningSection || "";
+
+        orders[row.orderId] = {
+          orderId: row.orderId,
+          context: {
+            orderType: isTakeaway ? "TAKEAWAY" : "DINE_IN",
+            tableId: row.TableId
+              ? String(row.TableId)
+                .replace(/^\{|\}$/g, "")
+                .trim()
+                .toLowerCase()
+              : undefined,
+            tableNo: isTakeaway ? null : String(row.tableNo).trim(),
+            section: normalizedSection,
+            takeawayNo: isTakeaway
+              ? row.tableNo === "TAKEAWAY"
+                ? row.orderId.slice(-4)
+                : String(row.tableNo).trim()
+              : null,
+          },
+          items: [],
+          createdAt: Date.now() - Math.max(0, Math.min(86400, Number(row.elapsedSeconds) || 0)) * 1000,
+        };
+      }
+      const statusMap = {
+        0: "VOIDED",
+        1: "NEW",
+        2: "SENT",
+        3: "READY",
+        4: "SERVED",
+        5: "HOLD",
+      };
+      orders[row.orderId].items.push({
+        ...row,
+        status: statusMap[row.StatusCode],
+        modifiers: row.ModifiersJSON ? JSON.parse(row.ModifiersJSON) : [],
+        comboSelections: row.ComboDetailsJSON ? JSON.parse(row.ComboDetailsJSON) : [],
+      });
+    });
+    res.json({ serverTime: Date.now(), orders: Object.values(orders) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post("/log-print", async (req, res) => {
   try {
     const { orderId, orderNumber, printType } = req.body;
@@ -2316,7 +2407,8 @@ router.post("/log-print", async (req, res) => {
 
 router.post("/merge", async (req, res) => {
   try {
-    const { targetTableId, sourceTableIds, userId } = req.body;
+    const { targetTableId, sourceTableIds, sourceOrders, userId } = req.body;
+    // sourceOrders: [{ tableId, orderNumber, tableNo, section }] – sent by frontend for reliable lookup
     const pool = await poolPromise;
     const cleanTargetId = String(targetTableId)
       .replace(/^\{|\}$/g, "")
@@ -2397,11 +2489,23 @@ router.post("/merge", async (req, res) => {
 
       const io = req.app.get("io");
 
+      // Build a lookup map: tableId (lowercase, no braces) -> orderNumber from frontend
+      const sourceOrderMap = {};
+      if (Array.isArray(sourceOrders)) {
+        sourceOrders.forEach(so => {
+          if (so && so.tableId && so.orderNumber) {
+            const cleanId = String(so.tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
+            sourceOrderMap[cleanId] = String(so.orderNumber).trim();
+          }
+        });
+      }
+
       for (const sourceTableId of sourceTableIds) {
         const cleanSourceId = String(sourceTableId)
           .replace(/^\{|\}$/g, "")
-          .trim();
-        if (cleanSourceId === cleanTargetId) {
+          .trim()
+          .toLowerCase();
+        if (cleanSourceId === cleanTargetId.toLowerCase()) {
           console.log(
             `[MERGE LOOP] Skipping identical target/source table: ${cleanSourceId}`,
           );
@@ -2423,28 +2527,46 @@ router.post("/merge", async (req, res) => {
           continue;
         }
         const sourceTableNo = sourceCheck.recordset[0].TableNumber;
-        const sourceOrderId = sourceCheck.recordset[0].CurrentOrderId;
+        const sourceOrderIdFromTable = sourceCheck.recordset[0].CurrentOrderId;
+
+        // 🚀 PRIMARY: Use orderNumber passed from frontend (more reliable – comes directly from active KDS)
+        // FALLBACK: Use TableMaster.CurrentOrderId if frontend didn't send it
+        const frontendOrderNumber = sourceOrderMap[cleanSourceId];
+        const sourceOrderId = frontendOrderNumber || sourceOrderIdFromTable;
+
         console.log(
-          `[MERGE LOOP] Source Table: ${sourceTableNo}, Active OrderNo: ${sourceOrderId}`,
+          `[MERGE LOOP] Source Table: ${sourceTableNo}, TableMaster OrderNo: ${sourceOrderIdFromTable}, Frontend OrderNo: ${frontendOrderNumber}, Using: ${sourceOrderId}`,
         );
         if (!sourceOrderId || sourceOrderId === "NEW") {
           console.log(`[MERGE LOOP SKIP] Source table has no active order.`);
           continue;
         }
 
-        // Fetch source order guid
+        // Fetch source order guid – try with isOrderClosed = 0 first, then without filter as fallback
         console.log(
           `[MERGE LOOP] Fetching source Order GUID for OrderNo: ${sourceOrderId}`,
         );
-        const sourceGuidRes = await transaction
+        let sourceGuidRes = await transaction
           .request()
           .input("orderNo", sql.NVarChar(50), sourceOrderId)
           .query(
             "SELECT TOP 1 OrderId FROM RestaurantOrderCur WHERE OrderNumber = @orderNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL)",
           );
+        
+        // 🚀 FALLBACK: if not found with open filter, try without (stale closed order edge case)
+        if (!sourceGuidRes.recordset[0]?.OrderId) {
+          console.log(`[MERGE LOOP] Open order not found, trying without isOrderClosed filter...`);
+          sourceGuidRes = await transaction
+            .request()
+            .input("orderNo2", sql.NVarChar(50), sourceOrderId)
+            .query(
+              "SELECT TOP 1 OrderId FROM RestaurantOrderCur WHERE OrderNumber = @orderNo2 ORDER BY CreatedOn DESC",
+            );
+        }
+        
         const sourceOrderGuid = sourceGuidRes.recordset[0]?.OrderId;
         if (!sourceOrderGuid) {
-          console.log(`[MERGE LOOP ERROR] Active source order GUID not found.`);
+          console.log(`[MERGE LOOP ERROR] Active source order GUID not found for OrderNo: ${sourceOrderId}.`);
           continue;
         }
         console.log(

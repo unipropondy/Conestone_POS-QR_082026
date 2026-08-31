@@ -21,29 +21,30 @@ import { API_URL } from "../../constants/Config";
 import { useOrderContextStore } from "../../stores/orderContextStore";
 import { useCartStore } from "../../stores/cartStore";
 import { useCompanySettingsStore } from "../../stores/companySettingsStore";
+import { Theme } from "../../constants/theme";
 import { Ionicons } from "@expo/vector-icons";
 
 const { width } = Dimensions.get("window");
 
-// ─── Premium Design System Tokens ──────────────────────────────────────────
+// ─── Premium Design System Tokens (Mapped to Global POS Theme) ──────────────
 const C = {
-  orangePrimary: "#FF5E1A",
-  orangeDark:    "#E04D10",
-  orangeLight:   "#FF8038",
-  orangeBg:      "#FFA366",
-  bg:            "#F1F5F9",
-  cardSurface:   "#FFFFFF",
-  inputBg:       "#F8FAFC",
-  border:        "#E2E8F0",
-  borderFocus:   "#FF5E1A",
-  textDark:      "#0F172A",        // High contrast primary slate
-  textMedium:    "#334155",        // Dark secondary charcoal
-  textMuted:     "#64748B",
-  textPlaceholder: "#94A3B8",
-  orangeTint:    "rgba(255, 94, 26, 0.07)",
-  orangeSoft:    "#FFF2EC",
-  error:         "#EF4444",
-  success:       "#10B981",
+  orangePrimary: Theme.primary,
+  orangeDark:    Theme.primaryDark,
+  orangeLight:   Theme.primary,
+  orangeBg:      Theme.primary,
+  bg:            Theme.bgMain,     // Warm Cream background
+  cardSurface:   Theme.bgCard,     // White card surfaces
+  inputBg:       Theme.bgInput,    // Warm input backgrounds
+  border:        Theme.border,     // Warm border colors
+  borderFocus:   Theme.primary,
+  textDark:      Theme.textPrimary,
+  textMedium:    Theme.textSecondary,
+  textMuted:     Theme.textMuted,
+  textPlaceholder: Theme.textMuted,
+  orangeTint:    Theme.primaryLight,
+  orangeSoft:    Theme.primaryLight,
+  error:         Theme.danger,
+  success:       Theme.success,
 };
 
 export default function CustomerWelcomeScreen() {
@@ -275,9 +276,17 @@ export default function CustomerWelcomeScreen() {
         const data = await res.json();
         if (data.success) {
           if (data.promoImages && data.promoImages.length > 0) {
+            // Prefetch the first image so it loads instantly
+            const firstImg = data.promoImages[0]?.promoImage;
+            if (firstImg) {
+              Image.prefetch(firstImg).catch(() => {});
+            }
             setPromoImages(data.promoImages);
             setShowPromoModal(true);
           } else if (data.promoImage) {
+            if (data.promoImage) {
+              Image.prefetch(data.promoImage).catch(() => {});
+            }
             setPromoImages([{
               promoImage: data.promoImage,
               promoCode: data.promoCode || "",
@@ -805,32 +814,6 @@ export default function CustomerWelcomeScreen() {
         <Modal transparent visible={showPromoModal} animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={styles.promoModalContent}>
-              {/* Close Button on Top Right */}
-              <Animated.View style={{ transform: [{ scale: closeScale }], position: "absolute", top: 16, right: 16, zIndex: 20 }}>
-                <Pressable
-                  onHoverIn={() => {
-                    handleCloseHover(true);
-                    setIsCloseHovered(true);
-                  }}
-                  onHoverOut={() => {
-                    handleCloseHover(false);
-                    setIsCloseHovered(false);
-                  }}
-                  style={({ hovered }) => [
-                    styles.promoTopCloseBtn,
-                    hovered && styles.promoTopCloseBtnHover
-                  ]}
-                  onPress={() => {
-                    setShowPromoModal(false);
-                    setPromoModalDismissed(true);
-                  }}
-                >
-                  <Ionicons name="close" size={20} color={isCloseHovered ? "#FFFFFF" : "#E2E8F0"} />
-                </Pressable>
-              </Animated.View>
-
-              <Text style={styles.promoModalTitle}>Welcome Special Offer!</Text>
-              
               <Animated.View 
                 style={{ transform: [{ scale: imageScale }], width: "100%", alignItems: "center" }}
                 onTouchStart={handleTouchStart}
@@ -839,14 +822,38 @@ export default function CustomerWelcomeScreen() {
                 <Pressable
                   onHoverIn={() => handleImageHover(true)}
                   onHoverOut={() => handleImageHover(false)}
-                  style={{ width: "100%" }}
+                  style={[{ width: "100%" }, Platform.select({ web: { outlineStyle: "none" } as any })]}
                 >
-                  <Animated.View style={{ opacity: imageFadeAnim, transform: [{ scale: imageTransitionScale }], width: "100%" }}>
+                  <Animated.View style={{ opacity: imageFadeAnim, transform: [{ scale: imageTransitionScale }], width: "100%", position: "relative" }}>
                     <Image 
                       source={{ uri: promoImages[currentPromoIndex]?.promoImage }} 
                       style={styles.promoImage} 
-                      resizeMode="contain"
+                      resizeMode="cover"
                     />
+
+                    {/* Close Button on Top Right (Inside the Image) */}
+                    <Animated.View style={{ transform: [{ scale: closeScale }], position: "absolute", top: 20, right: 20, zIndex: 20 }}>
+                      <Pressable
+                        onHoverIn={() => {
+                          handleCloseHover(true);
+                          setIsCloseHovered(true);
+                        }}
+                        onHoverOut={() => {
+                          handleCloseHover(false);
+                          setIsCloseHovered(false);
+                        }}
+                        style={({ hovered }) => [
+                          styles.promoTopCloseBtn,
+                          hovered && styles.promoTopCloseBtnHover
+                        ]}
+                        onPress={() => {
+                          setShowPromoModal(false);
+                          setPromoModalDismissed(true);
+                        }}
+                      >
+                        <Ionicons name="close" size={20} color={isCloseHovered ? "#FFFFFF" : "#E2E8F0"} />
+                      </Pressable>
+                    </Animated.View>
                   </Animated.View>
                 </Pressable>
               </Animated.View>
@@ -1447,50 +1454,32 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
 
-  // Promo Modal Styles
   promoModalContent: {
     width: "90%",
     maxWidth: 400,
-    backgroundColor: "#1E293B",
-    borderRadius: 28,
-    padding: 24,
+    backgroundColor: "transparent",
     alignItems: "center",
-    shadowColor: C.orangePrimary,
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.4,
-    shadowRadius: 24,
-    elevation: 20,
-    borderWidth: 1.5,
-    borderColor: "rgba(255, 94, 26, 0.35)",
-  },
-  promoModalTitle: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: "#FFFFFF",
-    marginBottom: 18,
-    textAlign: "center",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    textShadowColor: "rgba(255, 94, 26, 0.5)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 6,
+    justifyContent: "center",
+    position: "relative",
+    ...Platform.select({
+      web: { outlineStyle: "none" } as any,
+    }),
   },
   promoImage: {
     width: "100%",
-    height: 300,
-    borderRadius: 20,
-    marginBottom: 16,
-    backgroundColor: "#0F172A",
+    aspectRatio: 0.75, // Standard vertical poster aspect ratio (3:4)
+    borderRadius: 24,
+    backgroundColor: "transparent",
   },
   promoTopCloseBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(15, 23, 42, 0.75)", // Dark semi-transparent Slate
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1.5,
-    borderColor: "rgba(255, 255, 255, 0.2)",
+    borderColor: "rgba(255, 255, 255, 0.4)",
   },
   promoTopCloseBtnHover: {
     backgroundColor: C.orangePrimary,
@@ -1501,7 +1490,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 8,
-    marginTop: 12,
+    marginTop: 16,
   },
   promoDot: {
     width: 8,
