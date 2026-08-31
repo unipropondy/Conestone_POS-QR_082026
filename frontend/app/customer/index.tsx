@@ -568,9 +568,22 @@ export default function CustomerWelcomeScreen() {
 
             <View style={styles.splashContent}>
               <View style={styles.splashTextCard}>
-                <Text style={styles.splashWelcome}>Welcome to</Text>
-                <Text style={styles.splashTitle}>{settings?.name || "Smart POS"}</Text>
-                <Text style={styles.splashSubtitle}>Scan, Order & Enjoy your meal</Text>
+                {/* Logo Section */}
+                <Animated.View style={[styles.logoBadgeContainer, { transform: [{ scale: pulseAnim }], alignSelf: "center", marginBottom: 16 }]}>
+                  <View style={styles.logoBadgeInner}>
+                    {logoUri ? (
+                      <Image source={{ uri: logoUri }} style={styles.logoImage} />
+                    ) : (
+                      <View style={styles.foodIllustration}>
+                        <Ionicons name="restaurant" size={32} color={C.orangePrimary} />
+                      </View>
+                    )}
+                  </View>
+                </Animated.View>
+
+                <Text style={[styles.splashWelcome, { textAlign: "center" }]}>Welcome to</Text>
+                <Text style={[styles.splashTitle, { textAlign: "center" }]}>{settings?.name || "Smart POS"}</Text>
+                <Text style={[styles.splashSubtitle, { textAlign: "center" }]}>Scan, Order & Enjoy your meal</Text>
               </View>
 
               <View style={styles.splashBtnGroupCard}>
@@ -1570,14 +1583,15 @@ const styles = StyleSheet.create({
   },
   splashScroll: {
     flexGrow: 1,
-    justifyContent: "space-between",
-    paddingBottom: 48,
+    justifyContent: "center",
+    paddingBottom: 24,
   },
   splashContent: {
     flex: 1,
-    justifyContent: "space-between",
+    justifyContent: "center",
     paddingHorizontal: 24,
-    marginTop: 40,
+    gap: 16,
+    marginTop: 10,
   },
   splashTextCard: {
     backgroundColor: "rgba(255, 255, 255, 0.94)",
