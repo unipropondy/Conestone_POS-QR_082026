@@ -90,6 +90,7 @@ export default function CustomerWelcomeScreen() {
   const [authLoading, setAuthLoading] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [foodIndex, setFoodIndex] = useState(0);
+  const [imageAspectRatio, setImageAspectRatio] = useState<number>(9 / 16);
 
   // Pax Selection Pop-up states
   const [tempUser, setTempUser] = useState<any>(null);
@@ -313,6 +314,22 @@ export default function CustomerWelcomeScreen() {
 
     return () => clearInterval(interval);
   }, [showPromoModal, promoImages, currentPromoIndex]);
+
+  useEffect(() => {
+    if (promoImages.length > 0 && promoImages[currentPromoIndex]?.promoImage) {
+      Image.getSize(
+        promoImages[currentPromoIndex].promoImage,
+        (w, h) => {
+          if (w && h) {
+            setImageAspectRatio(w / h);
+          }
+        },
+        () => {
+          setImageAspectRatio(9 / 16);
+        }
+      );
+    }
+  }, [promoImages, currentPromoIndex]);
 
   useEffect(() => {
     if (scannedTable) return;
@@ -898,12 +915,12 @@ export default function CustomerWelcomeScreen() {
                   <Animated.View style={{ opacity: imageFadeAnim, transform: [{ scale: imageTransitionScale }], width: "100%", position: "relative" }}>
                     <Image 
                       source={{ uri: promoImages[currentPromoIndex]?.promoImage }} 
-                      style={styles.promoImage} 
+                      style={[styles.promoImage, { aspectRatio: imageAspectRatio }]} 
                       resizeMode="cover"
                     />
 
-                    {/* Close Button on Top Right (Inside the Image) */}
-                    <Animated.View style={{ transform: [{ scale: closeScale }], position: "absolute", top: 20, right: 20, zIndex: 20 }}>
+                    {/* Close Button on Top Right (Inside the Image Wrapper) */}
+                    <Animated.View style={{ transform: [{ scale: closeScale }], position: "absolute", top: 12, right: 12, zIndex: 30 }}>
                       <Pressable
                         onHoverIn={() => {
                           handleCloseHover(true);
@@ -1551,19 +1568,18 @@ const styles = StyleSheet.create({
   },
   promoImage: {
     width: "100%",
-    aspectRatio: 0.75, // Standard vertical poster aspect ratio (3:4)
     borderRadius: 24,
     backgroundColor: "transparent",
   },
   promoTopCloseBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(15, 23, 42, 0.75)", // Dark semi-transparent Slate
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(15, 23, 42, 0.85)",
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1.5,
-    borderColor: "rgba(255, 255, 255, 0.4)",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
   },
   promoTopCloseBtnHover: {
     backgroundColor: C.orangePrimary,
