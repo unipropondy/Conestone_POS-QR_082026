@@ -15,6 +15,7 @@ import {
   Modal,
   Dimensions,
   Pressable,
+  ImageBackground,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { API_URL } from "../../constants/Config";
@@ -59,7 +60,7 @@ export default function CustomerWelcomeScreen() {
     section: string;
   } | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"signin" | "signup">("signin");
+  const [activeTab, setActiveTab] = useState<"splash" | "signin" | "signup">("splash");
 
   // Sign In
   const [loginUsername, setLoginUsername] = useState("");
@@ -358,13 +359,16 @@ export default function CustomerWelcomeScreen() {
     setPopupConfig({ title, message });
   };
 
-  const switchTab = (tab: "signin" | "signup") => {
+  const switchTab = (tab: "splash" | "signin" | "signup") => {
     setActiveTab(tab);
-    Animated.timing(tabAnim, {
-      toValue: tab === "signin" ? 0 : 1,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
+    if (tab !== "splash") {
+      fadeAnim.setValue(0);
+      slideAnim.setValue(25);
+      Animated.parallel([
+        Animated.timing(fadeAnim,  { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
+      ]).start();
+    }
   };
 
   const proceedToMenu = (user: { userName: string; fullName?: string; phone?: string; email?: string; promoCode?: string; promoAmount?: number }) => {
@@ -541,76 +545,90 @@ export default function CustomerWelcomeScreen() {
   const logoUri = getLogoUri(settings?.companyLogo);
 
   return (
-    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      {/* ── Dynamic Organic Top Header Wave ── */}
-      <View style={styles.headerWaveBackground}>
-        <Animated.View style={[styles.headerWaveCircleLarge, { transform: [{ translateY: floatAnim }] }]} />
-        <Animated.View style={[styles.headerWaveCircleSmall, { transform: [{ translateY: Animated.multiply(floatAnim, -1) }] }]} />
+    <View style={styles.webContainer}>
+      <ImageBackground 
+        source={require("../../assets/images/login_bg_pattern.jpg")} 
+        style={styles.root}
+        resizeMode="cover"
+      >
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         
-        {/* Floating Geo accents */}
-        <Animated.View style={[styles.floatingGeo, { top: 40, right: 36, width: 14, height: 14, borderRadius: 7, transform: [{ translateY: floatAnim }] }]} />
-        <Animated.View style={[styles.floatingGeo, { top: 95, left: 45, width: 12, height: 12, transform: [{ rotate: '45deg' }, { translateY: floatAnim }] }]} />
-        <Animated.View style={[styles.floatingGeoRing, { top: 130, right: 80, transform: [{ translateY: Animated.multiply(floatAnim, -1.2) }] }]} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} bounces={false}>
-        {/* Top Header Bar */}
-        <View style={styles.topBar}>
-          <View style={{ width: 20 }} /> {/* spacer */}
-
-          {scannedTable && (
-            <View style={styles.tablePill}>
-              <Ionicons name="location-sharp" size={13} color="#FFFFFF" />
-              <Text style={styles.tablePillText}>Table {scannedTable.tableNo}</Text>
+        {activeTab === "splash" ? (
+          <ScrollView contentContainerStyle={styles.splashScroll} showsVerticalScrollIndicator={false} bounces={false}>
+            {/* Top Header Bar */}
+            <View style={styles.topBar}>
+              <View style={{ width: 20 }} />
+              {scannedTable && (
+                <View style={styles.tablePill}>
+                  <Ionicons name="location-sharp" size={13} color="#FFFFFF" />
+                  <Text style={styles.tablePillText}>Table {scannedTable.tableNo}</Text>
+                </View>
+              )}
             </View>
-          )}
-        </View>
 
-        <Animated.View style={[styles.containerCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-
-          {/* ── Brand Logo Section ── */}
-          <View style={styles.logoSection}>
-            <Animated.View style={[styles.logoBadgeContainer, { transform: [{ scale: pulseAnim }] }]}>
-              <View style={styles.logoBadgeInner}>
-                {logoUri ? (
-                  <Image source={{ uri: logoUri }} style={styles.logoImage} />
-                ) : (
-                  <View style={styles.foodIllustration}>
-                    <Ionicons name="restaurant" size={36} color={C.orangePrimary} />
-                  </View>
-                )}
+            <View style={styles.splashContent}>
+              <View style={styles.splashTextCard}>
+                <Text style={styles.splashWelcome}>Welcome to</Text>
+                <Text style={styles.splashTitle}>{settings?.name || "Smart POS"}</Text>
+                <Text style={styles.splashSubtitle}>Scan, Order & Enjoy your meal</Text>
               </View>
-            </Animated.View>
-            <Text style={styles.brandTitle}>{settings?.name || "Smart POS"}</Text>
-          </View>
 
-          {/* ── Tab Selector (Sign In | Sign Up) ── */}
-          <View style={styles.tabBar}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={[styles.tabBtn, activeTab === "signin" && styles.tabBtnActive]}
-              onPress={() => switchTab("signin")}
-            >
-              <Text style={[styles.tabText, activeTab === "signin" && styles.tabTextActive]}>Sign In</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={[styles.tabBtn, activeTab === "signup" && styles.tabBtnActive]}
-              onPress={() => switchTab("signup")}
-            >
-              <Text style={[styles.tabText, activeTab === "signup" && styles.tabTextActive]}>Sign Up</Text>
-            </TouchableOpacity>
-          </View>
+              <View style={styles.splashBtnGroupCard}>
+                <TouchableOpacity 
+                  activeOpacity={0.8} 
+                  style={styles.splashBtnSignIn} 
+                  onPress={() => switchTab("signin")}
+                >
+                  <Text style={styles.splashBtnSignInText}>Sign In</Text>
+                </TouchableOpacity>
 
-          {/* ── Subtitle ── */}
-          <View style={styles.authHeaderBox}>
-            <Text style={styles.authTitle}>
-              {activeTab === "signin" ? "Hello" : "Create Account"}
-            </Text>
-            <Text style={styles.authSubtitle}>
-              {activeTab === "signin" ? "Sign into your Account" : "Sign up to start ordering"}
-            </Text>
-          </View>
+                <TouchableOpacity 
+                  activeOpacity={0.8} 
+                  style={styles.splashBtnSignUp} 
+                  onPress={() => switchTab("signup")}
+                >
+                  <Text style={styles.splashBtnSignUpText}>Sign Up</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  activeOpacity={0.85} 
+                  style={styles.splashBtnGuest} 
+                  onPress={handleGuest}
+                >
+                  <Text style={styles.splashBtnGuestText}>Continue as Guest</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        ) : (
+          <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} bounces={false}>
+            {/* Top Header Bar with Back Button */}
+            <View style={styles.topBar}>
+              <TouchableOpacity 
+                activeOpacity={0.7} 
+                style={styles.backBtnCircle} 
+                onPress={() => switchTab("splash")}
+              >
+                <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+
+              {scannedTable && (
+                <View style={styles.tablePill}>
+                  <Ionicons name="location-sharp" size={13} color="#FFFFFF" />
+                  <Text style={styles.tablePillText}>Table {scannedTable.tableNo}</Text>
+                </View>
+              )}
+            </View>
+
+            <Animated.View style={[styles.containerCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }], marginTop: 60 }]}>
+              
+              {/* Title Header matching the Welcome style */}
+              <Text style={styles.mockupCardTitle}>
+                {activeTab === "signin" ? "Welcome" : "Welcome"}
+              </Text>
+              <Text style={styles.mockupCardSubtitle}>
+                {activeTab === "signin" ? "Please sign in to your account" : "Please create an account to proceed"}
+              </Text>
 
           {/* ═══════════════ SIGN IN ═══════════════ */}
           {activeTab === "signin" && (
@@ -782,6 +800,7 @@ export default function CustomerWelcomeScreen() {
 
         </Animated.View>
       </ScrollView>
+    )}
 
 
       {/* Popup Alert Modal */}
@@ -894,7 +913,9 @@ export default function CustomerWelcomeScreen() {
           <Text style={styles.transitionSubtitle}>Setting up your digital menu</Text>
         </View>
       )}
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </ImageBackground>
+  </View>
   );
 }
 
@@ -964,45 +985,33 @@ const cardFieldStyles = StyleSheet.create({
   fieldLabel: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#334155",
-    marginBottom: 6,
+    color: C.orangePrimary,
+    marginBottom: 4,
     letterSpacing: 0.2,
   },
   inputWrap: {
-    height: 52,
+    height: 48,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F8FAFC",
-    borderRadius: 16,
-    borderWidth: 1.5,
+    backgroundColor: "transparent",
+    borderBottomWidth: 1.5,
     borderColor: "#E2E8F0",
-    paddingHorizontal: 12,
+    paddingHorizontal: 0,
   },
   inputWrapFocused: {
     borderColor: C.orangePrimary,
-    backgroundColor: "#FFF5ED",
-    shadowColor: C.orangePrimary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
   },
   iconBadge: {
-    width: 32,
+    width: 28,
     height: 32,
-    borderRadius: 10,
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "center",
-    marginRight: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
+    marginRight: 6,
   },
   input: {
     flex: 1,
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "600",
     color: "#0F172A",
     height: "100%",
   },
@@ -1010,8 +1019,8 @@ const cardFieldStyles = StyleSheet.create({
     padding: 6,
   },
   countryPicker: {
-    paddingRight: 10,
-    marginRight: 8,
+    paddingRight: 8,
+    marginRight: 6,
     borderRightWidth: 1.5,
     borderRightColor: "#CBD5E1",
   },
@@ -1024,9 +1033,35 @@ const cardFieldStyles = StyleSheet.create({
 
 // ─── Main StyleSheet ──────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  webContainer: {
+    flex: 1,
+    backgroundColor: "#F5EBE1",
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
+    ...Platform.select({
+      web: {
+        minHeight: "100vh",
+      } as any,
+    }),
+  },
   root: {
     flex: 1,
+    width: "100%",
     backgroundColor: C.bg,
+    alignSelf: "center",
+    ...Platform.select({
+      web: {
+        maxWidth: 420,
+        height: "90vh",
+        maxHeight: 840,
+        borderRadius: 40,
+        borderWidth: 8,
+        borderColor: "#1E293B",
+        boxShadow: "0px 12px 40px rgba(0, 0, 0, 0.18)",
+        overflow: "hidden",
+      } as any,
+    }),
   },
   scroll: {
     flexGrow: 1,
@@ -1184,34 +1219,29 @@ const styles = StyleSheet.create({
   // Segmented Tab Switcher
   tabBar: {
     flexDirection: "row",
-    backgroundColor: "#F1F5F9",
-    borderRadius: 16,
-    padding: 4,
+    backgroundColor: "transparent",
     marginBottom: 22,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderBottomWidth: 1.5,
+    borderBottomColor: "#E2E8F0",
+    paddingBottom: 0,
   },
   tabBtn: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 12,
     alignItems: "center",
+    borderBottomWidth: 3,
+    borderBottomColor: "transparent",
   },
   tabBtnActive: {
-    backgroundColor: C.orangePrimary,
-    shadowColor: C.orangePrimary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 3,
+    borderBottomColor: C.orangePrimary,
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
     color: "#64748B",
   },
   tabTextActive: {
-    color: "#FFFFFF",
+    color: C.orangePrimary,
     fontWeight: "800",
   },
 
@@ -1540,5 +1570,130 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 14,
     color: C.textMuted,
+  },
+
+  splashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "transparent",
+  },
+  splashScroll: {
+    flexGrow: 1,
+    justifyContent: "space-between",
+    paddingBottom: 48,
+  },
+  splashContent: {
+    flex: 1,
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    marginTop: 40,
+  },
+  splashTextCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.94)",
+    borderRadius: 24,
+    paddingHorizontal: 22,
+    paddingVertical: 26,
+    width: "100%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 4,
+    marginTop: 36,
+  },
+  splashWelcome: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: C.orangePrimary,
+    marginBottom: 4,
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+  },
+  splashTitle: {
+    fontSize: 34,
+    fontWeight: "900",
+    color: "#0F172A",
+    lineHeight: 42,
+  },
+  splashSubtitle: {
+    fontSize: 15,
+    color: "#475569",
+    marginTop: 8,
+    fontWeight: "500",
+  },
+  splashBtnGroupCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.94)",
+    borderRadius: 24,
+    paddingHorizontal: 22,
+    paddingVertical: 24,
+    width: "100%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 4,
+    marginTop: 20,
+    gap: 14,
+  },
+  splashBtnSignIn: {
+    height: 52,
+    backgroundColor: C.orangePrimary,
+    borderRadius: 26,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: C.orangePrimary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  splashBtnSignInText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
+  },
+  splashBtnSignUp: {
+    height: 52,
+    backgroundColor: "transparent",
+    borderRadius: 26,
+    borderWidth: 2,
+    borderColor: C.orangePrimary,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  splashBtnSignUpText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: C.orangePrimary,
+    letterSpacing: 0.3,
+  },
+  splashBtnGuest: {
+    alignSelf: "center",
+    paddingVertical: 10,
+  },
+  splashBtnGuestText: {
+    color: "#475569",
+    fontWeight: "700",
+    fontSize: 14,
+    textDecorationLine: "underline",
+  },
+  backBtnCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  mockupCardTitle: {
+    fontSize: 32,
+    fontWeight: "900",
+    color: C.orangePrimary,
+    marginBottom: 8,
+  },
+  mockupCardSubtitle: {
+    fontSize: 14,
+    color: C.textMuted,
+    marginBottom: 24,
   },
 });
