@@ -60,7 +60,7 @@ export default function CustomerWelcomeScreen() {
     section: string;
   } | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"splash" | "signin" | "signup">("splash");
+  const [activeTab, setActiveTab] = useState<"splash" | "signin" | "signup">("signin");
 
   // Sign In
   const [loginUsername, setLoginUsername] = useState("");
@@ -545,34 +545,85 @@ export default function CustomerWelcomeScreen() {
   const logoUri = getLogoUri(settings?.companyLogo);
 
   return (
-    <View style={styles.webContainer}>
+    <ImageBackground 
+      source={require("../../assets/images/login_bg_pattern.jpg")} 
+      style={styles.webContainer}
+      resizeMode="cover"
+    >
       <View style={styles.root}>
-        {/* Top Header Banner image */}
-        <Image 
-          source={require("../../assets/images/login_bg_pattern.jpg")} 
-          style={styles.headerBanner}
-          resizeMode="cover"
-        />
-
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <ScrollView 
-            contentContainerStyle={styles.scrollCentered} 
-            showsVerticalScrollIndicator={false} 
-            bounces={false}
-          >
-            {/* Top Header Bar showing Table Number */}
+        
+        {activeTab === "splash" ? (
+          <ScrollView contentContainerStyle={styles.splashScroll} showsVerticalScrollIndicator={false} bounces={false}>
+            {/* Top Header Bar */}
             <View style={styles.topBar}>
-              {activeTab === "signup" ? (
-                <TouchableOpacity 
-                  activeOpacity={0.7} 
-                  style={styles.backBtnCircle} 
-                  onPress={() => switchTab("splash")}
-                >
-                  <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
-                </TouchableOpacity>
-              ) : (
-                <View style={{ width: 40 }} />
+              <View style={{ width: 20 }} />
+              {scannedTable && (
+                <View style={styles.tablePill}>
+                  <Ionicons name="location-sharp" size={13} color="#FFFFFF" />
+                  <Text style={styles.tablePillText}>Table {scannedTable.tableNo}</Text>
+                </View>
               )}
+            </View>
+
+            <View style={styles.splashContent}>
+              <View style={styles.splashTextCard}>
+                {/* Logo Section */}
+                <Animated.View style={[styles.logoBadgeContainer, { transform: [{ scale: pulseAnim }], alignSelf: "center", marginBottom: 16 }]}>
+                  <View style={styles.logoBadgeInner}>
+                    {logoUri ? (
+                      <Image source={{ uri: logoUri }} style={styles.logoImage} />
+                    ) : (
+                      <View style={styles.foodIllustration}>
+                        <Ionicons name="restaurant" size={32} color={C.orangePrimary} />
+                      </View>
+                    )}
+                  </View>
+                </Animated.View>
+
+                <Text style={[styles.splashWelcome, { textAlign: "center" }]}>Welcome to</Text>
+                <Text style={[styles.splashTitle, { textAlign: "center" }]}>{settings?.name || "Smart POS"}</Text>
+                <Text style={[styles.splashSubtitle, { textAlign: "center" }]}>Scan, Order & Enjoy your meal</Text>
+              </View>
+
+              <View style={styles.splashBtnGroupCard}>
+                <TouchableOpacity 
+                  activeOpacity={0.8} 
+                  style={styles.splashBtnSignIn} 
+                  onPress={() => switchTab("signin")}
+                >
+                  <Text style={styles.splashBtnSignInText}>Sign In</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  activeOpacity={0.8} 
+                  style={styles.splashBtnSignUp} 
+                  onPress={() => switchTab("signup")}
+                >
+                  <Text style={styles.splashBtnSignUpText}>Sign Up</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  activeOpacity={0.85} 
+                  style={styles.splashBtnGuest} 
+                  onPress={handleGuest}
+                >
+                  <Text style={styles.splashBtnGuestText}>Continue as Guest</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        ) : (
+          <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} bounces={false}>
+            {/* Top Header Bar with Back Button */}
+            <View style={styles.topBar}>
+              <TouchableOpacity 
+                activeOpacity={0.7} 
+                style={styles.backBtnCircle} 
+                onPress={() => switchTab("splash")}
+              >
+                <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
 
               {scannedTable && (
                 <View style={styles.tablePill}>
@@ -582,178 +633,226 @@ export default function CustomerWelcomeScreen() {
               )}
             </View>
 
-            <Animated.View style={[styles.floatingCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-              
-              {activeTab === "splash" ? (
-                <View style={{ width: "100%" }}>
-                  {/* Floating Logo Badge inside the Card at the top */}
-                  <Animated.View style={[styles.logoBadgeContainer, { transform: [{ scale: pulseAnim }], alignSelf: "center", marginBottom: 16 }]}>
-                    <View style={styles.logoBadgeInner}>
-                      {logoUri ? (
-                        <Image source={{ uri: logoUri }} style={styles.logoImage} />
-                      ) : (
-                        <View style={styles.foodIllustration}>
-                          <Ionicons name="restaurant" size={32} color={C.orangePrimary} />
-                        </View>
-                      )}
+            {/* Logo and Shop Name on Top Center */}
+            <View style={styles.headerLogoContainer}>
+              <Animated.View style={[styles.logoBadgeContainer, { transform: [{ scale: pulseAnim }], marginBottom: 6 }]}>
+                <View style={styles.logoBadgeInner}>
+                  {logoUri ? (
+                    <Image source={{ uri: logoUri }} style={styles.logoImage} />
+                  ) : (
+                    <View style={styles.foodIllustration}>
+                      <Ionicons name="restaurant" size={32} color={C.orangePrimary} />
                     </View>
-                  </Animated.View>
-
-                  <Text style={styles.bottomSheetWelcome}>Welcome to</Text>
-                  <Text style={styles.bottomSheetTitle}>{settings?.name || "Smart POS"}</Text>
-                  <Text style={[styles.forgotText, { color: C.textMuted, fontWeight: "600", marginTop: 4, marginBottom: 20, textAlign: "center" }]}>
-                    Scan, Order & Enjoy your meal
-                  </Text>
-
-                  {/* Login Form */}
-                  <CardField
-                    label="Email ID or Mobile Number*"
-                    placeholder="Email or Mobile Number"
-                    value={loginUsername}
-                    onChangeText={setLoginUsername}
-                    icon="mail-outline"
-                    autoCapitalize="none"
-                  />
-                  <CardField
-                    label="Password*"
-                    placeholder="••••••••••••"
-                    value={loginPassword}
-                    onChangeText={setLoginPassword}
-                    icon="lock-closed-outline"
-                    secureTextEntry={!showLoginPassword}
-                    rightIcon={showLoginPassword ? "eye-off-outline" : "eye-outline"}
-                    onRightIconPress={() => setShowLoginPassword(!showLoginPassword)}
-                  />
-
-                  <TouchableOpacity activeOpacity={0.7} style={styles.forgotBtn} onPress={() => showPopup("Password Reset", "Please contact store staff to reset your login password.")}>
-                    <Text style={styles.forgotText}>Forgot your Password?</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity activeOpacity={0.85} style={styles.primaryPillBtn} onPress={handleSignIn} disabled={authLoading}>
-                    {authLoading
-                      ? <ActivityIndicator color="#FFFFFF" size="small" />
-                      : <Text style={styles.primaryPillBtnText}>Login</Text>}
-                  </TouchableOpacity>
-
-                  {/* Footer Options */}
-                  <View style={styles.dividerRow}>
-                    <View style={styles.dividerLine} />
-                    <Text style={styles.dividerText}>or</Text>
-                    <View style={styles.dividerLine} />
-                  </View>
-
-                  <TouchableOpacity 
-                    activeOpacity={0.8} 
-                    style={styles.guestPillBtn} 
-                    onPress={() => switchTab("signup")}
-                  >
-                    <Text style={styles.guestPillBtnText}>Sign Up</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity 
-                    activeOpacity={0.85} 
-                    style={[styles.splashBtnGuest, { marginTop: 10 }]} 
-                    onPress={handleGuest}
-                  >
-                    <Text style={[styles.splashBtnGuestText, { color: C.orangePrimary }]}>Continue as Guest</Text>
-                  </TouchableOpacity>
+                  )}
                 </View>
-              ) : (
-                <View style={{ width: "100%" }}>
-                  <Text style={styles.bottomSheetWelcome}>Create Account</Text>
-                  <Text style={[styles.bottomSheetTitle, { marginBottom: 20 }]}>Sign Up</Text>
-                  
-                  {/* Signup Form */}
-                  <CardField
-                    label="User Name*"
-                    placeholder="Valentino Morose"
-                    value={regUsername}
-                    onChangeText={setRegUsername}
-                    icon="person-outline"
-                  />
+              </Animated.View>
+              <View style={styles.shopNameCapsule}>
+                <Text style={styles.headerShopNameRestaurant}>{settings?.name || "Restaurant"}</Text>
+              </View>
+              
+              {/* Slogan with orange side lines */}
+              <View style={styles.sloganContainer}>
+                <View style={styles.sloganLine} />
+                <Text style={styles.sloganText}>Good Food • Good Mood</Text>
+                <View style={styles.sloganLine} />
+              </View>
+            </View>
 
-                  <CardField
-                    label="Mobile Number*"
+            <Animated.View style={[styles.containerCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }], marginTop: 16 }]}>
+              
+              {/* Title Header matching the Welcome style */}
+              <Text style={styles.mockupCardTitle}>
+                {activeTab === "signin" ? (
+                  <Text>Welcome <Text style={{ color: C.orangePrimary }}>Back!</Text></Text>
+                ) : (
+                  <Text>Register <Text style={{ color: C.orangePrimary }}>Now!</Text></Text>
+                )}
+              </Text>
+              <Text style={styles.mockupCardSubtitle}>
+                {activeTab === "signin" ? "Please sign in to your account" : "Please create an account to proceed"}
+              </Text>
+
+          {/* ═══════════════ SIGN IN ═══════════════ */}
+          {activeTab === "signin" && (
+            <View style={styles.formContainer}>
+               <CardField
+                label="Email ID or Mobile Number*"
+                placeholder="Email or Mobile Number"
+                value={loginUsername}
+                onChangeText={setLoginUsername}
+                icon="mail-outline"
+                autoCapitalize="none"
+              />
+              <CardField
+                label="Password*"
+                placeholder="••••••••••••"
+                value={loginPassword}
+                onChangeText={setLoginPassword}
+                icon="lock-closed-outline"
+                secureTextEntry={!showLoginPassword}
+                rightIcon={showLoginPassword ? "eye-off-outline" : "eye-outline"}
+                onRightIconPress={() => setShowLoginPassword(!showLoginPassword)}
+              />
+
+              <TouchableOpacity activeOpacity={0.7} style={styles.forgotBtn} onPress={() => showPopup("Password Reset", "Please contact store staff to reset your login password.")}>
+                <Text style={styles.forgotText}>Forgot your Password?</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity activeOpacity={0.85} style={styles.primaryPillBtn} onPress={handleSignIn} disabled={authLoading}>
+                {authLoading ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Ionicons name="person-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.primaryPillBtnText}>Login</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              {/* Continue as Guest Button */}
+              <View style={styles.guestSection}>
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>or</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+                <TouchableOpacity activeOpacity={0.8} style={styles.guestPillBtn} onPress={handleGuest}>
+                  <Ionicons name="person-outline" size={18} color={C.orangePrimary} />
+                  <Text style={styles.guestPillBtnText}>Continue as Guest</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Switch to Register */}
+              <View style={styles.switchAuthRow}>
+                <Text style={styles.switchAuthText}>Don't have an account? </Text>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => switchTab("signup")}>
+                  <Text style={styles.switchAuthLink}>Register Now</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* ═══════════════ SIGN UP ═══════════════ */}
+          {activeTab === "signup" && (
+            <View style={styles.formContainer}>
+              <CardField
+                label="User Name*"
+                placeholder="Valentino Morose"
+                value={regUsername}
+                onChangeText={setRegUsername}
+                icon="person-outline"
+              />
+
+              {/* Phone Field with Country Code Selection */}
+              <View style={cardFieldStyles.fieldBox}>
+                <Text style={cardFieldStyles.fieldLabel}>Phone Number*</Text>
+                <View style={cardFieldStyles.inputWrap}>
+                  <View style={cardFieldStyles.iconBadge}>
+                    <Ionicons name="call-outline" size={18} color={C.orangePrimary} />
+                  </View>
+                  <TextInput
+                    style={cardFieldStyles.input}
                     placeholder="Enter phone number"
+                    placeholderTextColor={C.textPlaceholder}
                     value={regPhone}
                     onChangeText={(t) => setRegPhone(t.replace(/[^0-9+]/g, ''))}
-                    icon="call-outline"
                     keyboardType="phone-pad"
                   />
-
-                  <CardField
-                    label="Email ID*"
-                    placeholder="valentino@gmail.com"
-                    value={regEmail}
-                    onChangeText={setRegEmail}
-                    icon="mail-outline"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-
-                  <CardField
-                    label="Password*"
-                    placeholder="••••••••••••"
-                    value={regPassword}
-                    onChangeText={setRegPassword}
-                    icon="lock-closed-outline"
-                    secureTextEntry={!showRegPassword}
-                    rightIcon={showRegPassword ? "eye-off-outline" : "eye-outline"}
-                    onRightIconPress={() => setShowRegPassword(!showRegPassword)}
-                  />
-
-                  <CardField
-                    label="Confirm Password*"
-                    placeholder="••••••••••••"
-                    value={regConfirmPassword}
-                    onChangeText={setRegConfirmPassword}
-                    icon="shield-checkmark-outline"
-                    secureTextEntry={!showRegConfirmPassword}
-                    rightIcon={showRegConfirmPassword ? "eye-off-outline" : "eye-outline"}
-                    onRightIconPress={() => setShowRegConfirmPassword(!showRegConfirmPassword)}
-                  />
-
-                  <CardField
-                    label="Promo Code"
-                    placeholder="Optional promo code"
-                    value={regPromoCode}
-                    onChangeText={setRegPromoCode}
-                    icon="pricetag-outline"
-                    autoCapitalize="characters"
-                  />
-
-                  {/* Terms & Conditions Checkbox */}
-                  <TouchableOpacity 
-                    activeOpacity={0.8}
-                    style={styles.termsRow}
-                    onPress={() => setAgreedToTerms(!agreedToTerms)}
-                  >
-                    <View style={[styles.checkbox, agreedToTerms && styles.checkboxActive]}>
-                      {agreedToTerms && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
-                    </View>
-                    <Text style={styles.termsText}>
-                      I Read and agree to <Text style={styles.termsLink}>Terms & Conditions</Text>
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity activeOpacity={0.85} style={styles.primaryPillBtn} onPress={handleSignUp} disabled={authLoading}>
-                    {authLoading
-                      ? <ActivityIndicator color="#FFFFFF" size="small" />
-                      : <Text style={styles.primaryPillBtnText}>Register Now</Text>}
-                  </TouchableOpacity>
-
-                  {/* Switch to Sign In */}
-                  <View style={styles.switchAuthRow}>
-                    <Text style={styles.switchAuthText}>Already have an account? </Text>
-                    <TouchableOpacity activeOpacity={0.7} onPress={() => switchTab("splash")}>
-                      <Text style={styles.switchAuthLink}>Login</Text>
-                    </TouchableOpacity>
-                  </View>
                 </View>
-              )}
-              
-            </Animated.View>
-          </ScrollView>
+              </View>
+
+              <CardField
+                label="Email ID*"
+                placeholder="valentino@gmail.com"
+                value={regEmail}
+                onChangeText={setRegEmail}
+                icon="mail-outline"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+
+              <CardField
+                label="Password*"
+                placeholder="••••••••••••"
+                value={regPassword}
+                onChangeText={setRegPassword}
+                icon="lock-closed-outline"
+                secureTextEntry={!showRegPassword}
+                rightIcon={showRegPassword ? "eye-off-outline" : "eye-outline"}
+                onRightIconPress={() => setShowRegPassword(!showRegPassword)}
+              />
+
+              <CardField
+                label="Confirm Password*"
+                placeholder="••••••••••••"
+                value={regConfirmPassword}
+                onChangeText={setRegConfirmPassword}
+                icon="shield-checkmark-outline"
+                secureTextEntry={!showRegConfirmPassword}
+                rightIcon={showRegConfirmPassword ? "eye-off-outline" : "eye-outline"}
+                onRightIconPress={() => setShowRegConfirmPassword(!showRegConfirmPassword)}
+              />
+
+              <CardField
+                label="Promo Code"
+                placeholder="Optional promo code"
+                value={regPromoCode}
+                onChangeText={setRegPromoCode}
+                icon="pricetag-outline"
+                autoCapitalize="characters"
+              />
+
+              {/* Terms & Conditions Checkbox */}
+              <TouchableOpacity 
+                activeOpacity={0.8}
+                style={styles.termsRow}
+                onPress={() => setAgreedToTerms(!agreedToTerms)}
+              >
+                <View style={[styles.checkbox, agreedToTerms && styles.checkboxActive]}>
+                  {agreedToTerms && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
+                </View>
+                <Text style={styles.termsText}>
+                  I Read and agree to <Text style={styles.termsLink}>Terms & Conditions</Text>
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity activeOpacity={0.85} style={styles.primaryPillBtn} onPress={handleSignUp} disabled={authLoading}>
+                {authLoading ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Ionicons name="person-add-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.primaryPillBtnText}>Register Now</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              {/* Continue as Guest Button */}
+              <View style={styles.guestSection}>
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>or</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+                <TouchableOpacity activeOpacity={0.8} style={styles.guestPillBtn} onPress={handleGuest}>
+                  <Ionicons name="person-outline" size={18} color={C.orangePrimary} />
+                  <Text style={styles.guestPillBtnText}>Continue as Guest</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Switch to Sign In */}
+              <View style={styles.switchAuthRow}>
+                <Text style={styles.switchAuthText}>Already have an account? </Text>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => switchTab("signin")}>
+                  <Text style={styles.switchAuthLink}>Login</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+        </Animated.View>
+      </ScrollView>
+    )}
 
 
       {/* Popup Alert Modal */}
@@ -866,9 +965,9 @@ export default function CustomerWelcomeScreen() {
           <Text style={styles.transitionSubtitle}>Setting up your digital menu</Text>
         </View>
       )}
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
       </View>
-    </View>
+    </ImageBackground>
   );
 }
 
@@ -906,7 +1005,7 @@ function CardField({
       <View style={[cardFieldStyles.inputWrap, isFocused && cardFieldStyles.inputWrapFocused]}>
         {icon && (
           <View style={cardFieldStyles.iconBadge}>
-            <Ionicons name={icon} size={18} color={isFocused ? C.orangePrimary : C.textMuted} />
+            <Ionicons name={icon} size={18} color={C.orangePrimary} />
           </View>
         )}
         <TextInput
@@ -933,33 +1032,35 @@ function CardField({
 
 const cardFieldStyles = StyleSheet.create({
   fieldBox: {
-    marginBottom: 18,
+    marginBottom: 16,
   },
   fieldLabel: {
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "800",
     color: C.orangePrimary,
-    marginBottom: 4,
+    marginBottom: 6,
     letterSpacing: 0.2,
   },
   inputWrap: {
-    height: 48,
+    height: 52,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "transparent",
-    borderBottomWidth: 1.5,
-    borderColor: "#E2E8F0",
-    paddingHorizontal: 0,
+    backgroundColor: "#FFF9F6",
+    borderRadius: 14,
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 94, 26, 0.25)",
+    paddingHorizontal: 16,
   },
   inputWrapFocused: {
     borderColor: C.orangePrimary,
+    backgroundColor: "#FFF5F0",
   },
   iconBadge: {
-    width: 28,
+    width: 24,
     height: 32,
     alignItems: "flex-start",
     justifyContent: "center",
-    marginRight: 6,
+    marginRight: 10,
   },
   input: {
     flex: 1,
@@ -998,12 +1099,11 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
     maxWidth: 440,
-    backgroundColor: C.bg,
+    backgroundColor: "transparent",
     alignSelf: "center",
     ...Platform.select({
       web: {
         height: "100vh",
-        boxShadow: "0px 8px 32px rgba(0, 0, 0, 0.12)",
         overflow: "hidden",
       } as any,
     }),
@@ -1089,15 +1189,17 @@ const styles = StyleSheet.create({
   tablePill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(255, 255, 255, 0.28)",
+    gap: 6,
+    backgroundColor: "rgba(15, 23, 42, 0.65)",
     paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 18,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.2)",
   },
   tablePillText: {
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "900",
     color: "#FFFFFF",
   },
 
@@ -1126,22 +1228,29 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   logoBadgeContainer: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
-    backgroundColor: C.orangeSoft,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "#000000",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 10,
-    borderWidth: 2,
-    borderColor: "rgba(255, 94, 26, 0.25)",
+    borderWidth: 4,
+    borderColor: C.orangePrimary,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 5,
   },
   logoBadgeInner: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
     justifyContent: "center",
     alignItems: "center",
+    overflow: "hidden",
   },
   logoImage: {
     width: "100%",
@@ -1517,52 +1626,54 @@ const styles = StyleSheet.create({
     color: C.textMuted,
   },
 
-  headerBanner: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: "38%",
-    width: "100%",
+  splashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "transparent",
   },
-  scrollCentered: {
+  splashScroll: {
     flexGrow: 1,
     justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 30,
-    paddingHorizontal: 16,
+    paddingBottom: 24,
   },
-  floatingCard: {
-    width: "100%",
-    maxWidth: 390,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 28,
+  splashContent: {
+    flex: 1,
+    justifyContent: "center",
     paddingHorizontal: 24,
-    paddingTop: 30,
-    paddingBottom: 28,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255, 94, 26, 0.06)",
-    marginTop: 20,
+    gap: 16,
+    marginTop: 10,
   },
-  bottomSheetWelcome: {
-    fontSize: 13,
-    fontWeight: "800",
+  splashTextCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.94)",
+    borderRadius: 24,
+    paddingHorizontal: 22,
+    paddingVertical: 26,
+    width: "100%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 4,
+    marginTop: 36,
+  },
+  splashWelcome: {
+    fontSize: 14,
+    fontWeight: "700",
     color: C.orangePrimary,
+    marginBottom: 4,
     textTransform: "uppercase",
     letterSpacing: 1.2,
-    textAlign: "center",
   },
-  bottomSheetTitle: {
-    fontSize: 26,
+  splashTitle: {
+    fontSize: 34,
     fontWeight: "900",
     color: "#0F172A",
-    marginTop: 2,
-    textAlign: "center",
+    lineHeight: 42,
+  },
+  splashSubtitle: {
+    fontSize: 15,
+    color: "#475569",
+    marginTop: 8,
+    fontWeight: "500",
   },
   splashBtnGroupCard: {
     backgroundColor: "rgba(255, 255, 255, 0.94)",
@@ -1630,14 +1741,68 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   mockupCardTitle: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: "900",
-    color: C.orangePrimary,
+    color: "#0F172A",
     marginBottom: 8,
   },
   mockupCardSubtitle: {
     fontSize: 14,
     color: C.textMuted,
     marginBottom: 24,
+  },
+  headerLogoContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+    marginBottom: 12,
+    width: "100%",
+  },
+  headerShopNameMy: {
+    fontSize: 26,
+    fontWeight: "700",
+    color: C.orangePrimary,
+    fontStyle: "italic",
+    fontFamily: Platform.select({ ios: "Georgia", android: "serif", web: "Georgia, serif" }),
+    lineHeight: 28,
+    marginTop: 4,
+  },
+  shopNameCapsule: {
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 22,
+    paddingVertical: 7,
+    borderRadius: 22,
+    marginTop: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+    alignSelf: "center",
+  },
+  headerShopNameRestaurant: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: C.orangePrimary,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  sloganContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+    gap: 8,
+  },
+  sloganLine: {
+    width: 20,
+    height: 1.5,
+    backgroundColor: C.orangePrimary,
+  },
+  sloganText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#4A3E3D",
+    letterSpacing: 0.3,
   },
 });
