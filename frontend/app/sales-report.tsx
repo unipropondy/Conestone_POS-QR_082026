@@ -1330,9 +1330,23 @@ export default function SalesReport() {
     return "#" + "00000".substring(0, 6 - c.length) + c;
   };
 
-  // All payment modes use the same consistent card icon
-  const getPayModeIoniconName = (_mode: string): string => {
-    return "card-outline";
+  // Distinct Ionicons per payment mode
+  const getPayModeIoniconName = (mode: string): any => {
+    const m = mode.toUpperCase().trim();
+    if (m === 'CASH' || m === 'CAS') return 'cash-outline';
+    if (m === 'CARD' || m === 'YEAHPAYCARD') return 'card-outline';
+    if (m === 'NETS') return 'layers-outline';
+    if (m.includes('PAYNOW') || m.includes('PAY NOW') || m === 'UPI' || m === 'GPAY') return 'qr-code-outline';
+    if (m === 'GRAB') return 'car-outline';
+    if (m.includes('PANDA') || m.includes('FOODPANDA')) return 'bicycle-outline';
+    if (m === 'MEMBER') return 'person-circle-outline';
+    if (m === 'CREDIT') return 'pricetag-outline';
+    if (m === 'ONLINE' || m.includes('ONLINE')) return 'globe-outline';
+    if (m === 'CATERING' || m.includes('CATERING')) return 'restaurant-outline';
+    if (m === 'FOC') return 'gift-outline';
+    if (m.includes('BILLING') || m.includes('OLD')) return 'document-text-outline';
+    if (m.includes('YEAH')) return 'scan-outline';
+    return 'wallet-outline';
   };
 
   const paymentBreakdownMetrics = useMemo<Record<string, number>>(() => {
@@ -2950,10 +2964,10 @@ export default function SalesReport() {
           styles.breakdownRow,
           {
             flexWrap: "wrap",
-            justifyContent: "space-between",
+            justifyContent: "flex-start",
             width: "100%",
             rowGap: SCREEN_W < 480 ? 8 : 10,
-            columnGap: SCREEN_W < 480 ? 8 : 10
+            columnGap: SCREEN_W < 480 ? 8 : 10,
           }
         ]}>
           {displayedBreakdownModes.map((item, idx) => {
@@ -2962,13 +2976,13 @@ export default function SalesReport() {
             const val = paymentBreakdownMetrics[key] || 0;
             const outstanding = key === "CREDIT" ? paymentBreakdownMetrics["CREDIT_OUTSTANDING"] : undefined;
             const color = getPayModeColor(key);
+            const iconName = getPayModeIoniconName(key);
 
-            const layoutStyle = (SCREEN_W > 768
-              ? { flex: 1, minWidth: 0 }
-              : {
-                  width: SCREEN_W > 480 ? "31.5%" : "48%",
-                  minWidth: 0,
-                }) as any;
+            // 7 per row on web, 4 on tablet, 3 on mobile
+            const numCols = SCREEN_W > 768 ? 7 : SCREEN_W > 480 ? 4 : 3;
+            const gap = SCREEN_W < 480 ? 8 : 10;
+            const containerPad = 40; // breakdownCard padding 20 each side
+            const itemW = Math.floor((SCREEN_W - containerPad - (numCols - 1) * gap) / numCols);
 
             const isSomeFilterApplied = activePaymentModes.length < (displayedBreakdownModes.length + 1);
             const isThisActive = activePaymentModes.includes(key);
@@ -2982,7 +2996,7 @@ export default function SalesReport() {
                 onPress={() => handleBreakdownPress(item.payMode)}
                 style={[
                   styles.breakdownItem,
-                  layoutStyle,
+                  { width: itemW },
                   {
                     borderColor: hexToRgba(color, 0.22),
                     borderWidth: 1.5,
@@ -3005,7 +3019,7 @@ export default function SalesReport() {
                   styles.breakdownIconCircle,
                   { backgroundColor: hexToRgba(color, 0.12) }
                 ]}>
-                  <Ionicons name={"card-outline" as any} size={SCREEN_W < 480 ? 18 : 20} color={color} />
+                  <Ionicons name={iconName} size={SCREEN_W < 480 ? 18 : 20} color={color} />
                 </View>
                 <Text style={[styles.breakdownLabel, SCREEN_W < 480 && { fontSize: 8 }]} numberOfLines={1} adjustsFontSizeToFit>{label}</Text>
                 <Text
