@@ -1330,21 +1330,9 @@ export default function SalesReport() {
     return "#" + "00000".substring(0, 6 - c.length) + c;
   };
 
-  const PAYMODE_ICONS: Record<string, string> = {
-    CASH: "💵",
-    CARD: "💳",
-    NETS: "🔳",
-    PAYNOW: "📱",
-    GRAB: "💚",
-    FOODPANDA: "🐼",
-    UPI: "📱",
-    MEMBER: "👤",
-    CREDIT: "🏷️",
-  };
-
-  const getPayModeIconChar = (mode: string) => {
-    const m = mode.toUpperCase().trim();
-    return PAYMODE_ICONS[m] || "💳";
+  // All payment modes use the same consistent card icon
+  const getPayModeIoniconName = (_mode: string): string => {
+    return "card-outline";
   };
 
   const paymentBreakdownMetrics = useMemo<Record<string, number>>(() => {
@@ -2973,17 +2961,13 @@ export default function SalesReport() {
             const label = item.description || item.payMode;
             const val = paymentBreakdownMetrics[key] || 0;
             const outstanding = key === "CREDIT" ? paymentBreakdownMetrics["CREDIT_OUTSTANDING"] : undefined;
-            const icon = getPayModeIconChar(key);
             const color = getPayModeColor(key);
 
-            const numColumns = SCREEN_W > 768 ? Math.max(6, displayedBreakdownModes.length) : (SCREEN_W > 480 ? 3 : 2);
             const layoutStyle = (SCREEN_W > 768
               ? { flex: 1, minWidth: 0 }
               : {
                   width: SCREEN_W > 480 ? "31.5%" : "48%",
                   minWidth: 0,
-                  paddingHorizontal: 4,
-                  paddingVertical: SCREEN_W < 480 ? 8 : 12
                 }) as any;
 
             const isSomeFilterApplied = activePaymentModes.length < (displayedBreakdownModes.length + 1);
@@ -3000,26 +2984,32 @@ export default function SalesReport() {
                   styles.breakdownItem,
                   layoutStyle,
                   {
-                    borderColor: hexToRgba(color, 0.25),
-                    borderWidth: 1,
+                    borderColor: hexToRgba(color, 0.22),
+                    borderWidth: 1.5,
                     backgroundColor: "#ffffff",
                   },
                   isActive && {
                     borderColor: color,
                     borderWidth: 2,
-                    backgroundColor: hexToRgba(color, 0.04),
+                    backgroundColor: hexToRgba(color, 0.05),
                     ...Theme.shadowSm,
                   },
                   isInactive && {
-                    opacity: 0.4,
+                    opacity: 0.35,
                     borderColor: Theme.border,
                   }
                 ]}
               >
-                <Text style={[styles.breakdownIcon, SCREEN_W < 480 && { fontSize: 20 }]}>{icon}</Text>
-                <Text style={[styles.breakdownLabel, SCREEN_W < 480 && { fontSize: 8 }]}>{label}</Text>
+                {/* Icon circle */}
+                <View style={[
+                  styles.breakdownIconCircle,
+                  { backgroundColor: hexToRgba(color, 0.12) }
+                ]}>
+                  <Ionicons name={"card-outline" as any} size={SCREEN_W < 480 ? 18 : 20} color={color} />
+                </View>
+                <Text style={[styles.breakdownLabel, SCREEN_W < 480 && { fontSize: 8 }]} numberOfLines={1} adjustsFontSizeToFit>{label}</Text>
                 <Text
-                  style={[styles.breakdownValue, { color: color }, SCREEN_W < 480 && { fontSize: 10.5 }]}
+                  style={[styles.breakdownValue, { color }, SCREEN_W < 480 && { fontSize: 11 }]}
                   numberOfLines={1}
                   adjustsFontSizeToFit
                 >
@@ -5763,30 +5753,37 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   breakdownItem: {
-    minWidth: 95,
     alignItems: "center",
     gap: 6,
-    paddingVertical: 16,
-    paddingHorizontal: 10,
-    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderRadius: 14,
     backgroundColor: "#ffffff",
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Theme.border,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 5,
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
     elevation: 2,
   },
-  breakdownIcon: { fontSize: 26 },
+  breakdownIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+  },
   breakdownLabel: {
-    color: Theme.textMuted,
+    color: Theme.textSecondary,
     fontFamily: Fonts.bold,
     fontSize: 9,
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
     textTransform: "uppercase",
+    textAlign: "center",
   },
-  breakdownValue: { fontFamily: Fonts.black, fontSize: 12 },
+  breakdownValue: { fontFamily: Fonts.black, fontSize: 13, textAlign: "center" },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
