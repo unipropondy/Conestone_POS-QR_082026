@@ -272,6 +272,7 @@ export default function PaymentScreen() {
   const terminalSession = useTerminalPaymentStore(
     (s) => context?.tableId ? s.sessions[String(context.tableId)] : undefined
   );
+  const finalizationLockRef = React.useRef<Record<string, boolean>>({});
 
   // Reset local payment status banner when context changes or screen gains focus (unless actively processing)
   useEffect(() => {
@@ -311,19 +312,11 @@ export default function PaymentScreen() {
       }
 
       if (terminalSession.status === "success") {
-        showToast({
-          type: 'success',
-          message: '✅ Payment Successful',
-          subtitle: `${currencySymbol}${terminalSession.total.toFixed(2)} paid via ${terminalSession.method}`
-        });
-        if (context?.tableId) {
-          const tblIdStr = String(context.tableId);
-          useTerminalPaymentStore.getState().clearSession(tblIdStr);
-          useTableNavigationStore.getState().clearTableLastScreen(tblIdStr);
-          useTableNavigationStore.getState().clearSelectedMethod(tblIdStr);
-        }
-        delete ongoingPayments[cacheKey];
-        executeFinalPayment();
+        handleTerminalPaymentSuccess(
+          terminalSession.method || method,
+          terminalSession.total || total,
+          terminalSession.message
+        );
       } else if (terminalSession.status === "cancelled") {
         Alert.alert(
           '❌ Transaction Cancelled',
@@ -335,6 +328,9 @@ export default function PaymentScreen() {
           const tblIdStr = String(context.tableId);
           useTerminalPaymentStore.getState().clearSession(tblIdStr);
         }
+        setProcessing(false);
+        setPaymentStatus("cancelled");
+        setPaymentMessage(terminalSession.message || '❌ Transaction cancelled on terminal');
       } else if (terminalSession.status === "failed") {
         Alert.alert(
           '❌ Payment Failed',
@@ -346,6 +342,9 @@ export default function PaymentScreen() {
           const tblIdStr = String(context.tableId);
           useTerminalPaymentStore.getState().clearSession(tblIdStr);
         }
+        setProcessing(false);
+        setPaymentStatus("failed");
+        setPaymentMessage(terminalSession.message || '❌ Payment failed');
       }
     } else {
       if (paymentStatus !== "idle") {
@@ -355,6 +354,39 @@ export default function PaymentScreen() {
       }
     }
   }, [terminalSession, cacheKey]);
+
+  const settingsStore = useCompanySettingsStore((state: { settings: CompanySettings }) => state.settings);
+  const currencySymbol = settingsStore.currencySymbol || "$";
+  const gstRate = (settingsStore.gstPercentage || 0) / 100;
+  const scRate = (settingsStore.serviceChargePercentage || 0) / 100;
+
+  const handleTerminalPaymentSuccess = React.useCallback((methodName: string, totalAmt: number, msg?: string) => {
+    const lockKey = (context?.tableId || displayOrderId || checkoutSessionId || "default").toString();
+    if (finalizationLockRef.current[lockKey]) {
+      console.log(`[YeahPay] Already finalizing payment for ${lockKey}, skipping duplicate call.`);
+      return;
+    }
+    finalizationLockRef.current[lockKey] = true;
+
+    showToast({
+      type: 'success',
+      message: '✅ Payment Successful',
+      subtitle: `${currencySymbol}${totalAmt.toFixed(2)} paid via ${methodName}`
+    });
+
+    if (context?.tableId) {
+      const tblIdStr = String(context.tableId);
+      useTerminalPaymentStore.getState().clearSession(tblIdStr);
+      useTableNavigationStore.getState().clearTableLastScreen(tblIdStr);
+      useTableNavigationStore.getState().clearSelectedMethod(tblIdStr);
+    }
+    if (cacheKey) {
+      delete ongoingPayments[cacheKey];
+    }
+
+    executeFinalPayment(undefined, undefined, undefined, true);
+  }, [cacheKey, context?.tableId, displayOrderId, checkoutSessionId, currencySymbol]);
+
 
   useEffect(() => {
     if (isFocused) {
@@ -561,10 +593,6 @@ export default function PaymentScreen() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [isUPIVisible, setIsUPIVisible] = useState(false);
   const [isPayNowVisible, setIsPayNowVisible] = useState(false);
-  const settingsStore = useCompanySettingsStore((state: { settings: CompanySettings }) => state.settings);
-  const currencySymbol = settingsStore.currencySymbol || "$";
-  const gstRate = (settingsStore.gstPercentage || 0) / 100;
-  const scRate = (settingsStore.serviceChargePercentage || 0) / 100;
   const [roundOff, setRoundOff] = useState(0);
   const [roundType, setRoundType] = useState<
     "whole" | "five" | "ten" | "custom" | null
@@ -1285,11 +1313,29 @@ export default function PaymentScreen() {
           }
 
           if (context?.tableId) {
-            if (status === "success") {
-              useTerminalPaymentStore.getState().updateSession(context.tableId, { status: "success", message });
-            } else {
-              useTerminalPaymentStore.getState().updateSession(context.tableId, { status, message });
+            useTerminalPaymentStore.getState().updateSession(context.tableId, { status, message });
+          }
+
+          if (status === "success") {
+            handleTerminalPaymentSuccess(method, total, message);
+          } else if (status === "cancelled") {
+            setProcessing(false);
+            setPaymentStatus("cancelled");
+            setPaymentMessage(message);
+            Alert.alert('❌ Transaction Cancelled', 'Payment was cancelled on the terminal. Please try again.');
+            if (context?.tableId) {
+              useTerminalPaymentStore.getState().clearSession(String(context.tableId));
             }
+            delete ongoingPayments[cacheKey];
+          } else {
+            setProcessing(false);
+            setPaymentStatus("failed");
+            setPaymentMessage(message);
+            Alert.alert('❌ Payment Failed', message || 'Failed to connect to terminal');
+            if (context?.tableId) {
+              useTerminalPaymentStore.getState().clearSession(String(context.tableId));
+            }
+            delete ongoingPayments[cacheKey];
           }
           return result;
         } catch (error: any) {
@@ -1305,6 +1351,11 @@ export default function PaymentScreen() {
           if (context?.tableId) {
             useTerminalPaymentStore.getState().updateSession(context.tableId, { status: "failed", message });
           }
+          setProcessing(false);
+          setPaymentStatus("failed");
+          setPaymentMessage(message);
+          Alert.alert('❌ Payment Failed', message);
+          delete ongoingPayments[cacheKey];
           return { success: false, code: -1, msg: error.message };
         }
       })();
@@ -1442,8 +1493,9 @@ export default function PaymentScreen() {
     }>,
     memberOverride?: any,
     focAmount?: number,
+    bypassProcessingCheck?: boolean,
   ) => {
-    if (processing) return;
+    if (processing && !bypassProcessingCheck) return;
     setProcessing(true);
     if (isLedgerCollection) {
       const selectedMode = paymentMethods.find((m) => m.payMode === method);
