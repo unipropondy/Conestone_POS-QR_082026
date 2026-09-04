@@ -159,6 +159,7 @@ export default function SalesReport() {
   const logout = useAuthStore((state) => state.logout);
   const isSalesReportUser = user?.userGroupId === "DFCF23EE-F6F4-4885-8D26-0056C657595F";
   const { width: SCREEN_W } = useWindowDimensions();
+  const [breakdownRowWidth, setBreakdownRowWidth] = useState(0);
   const [sales, setSales] = useState<any[]>([]);
   const [dbPaymentModes, setDbPaymentModes] = useState<any[]>([
     { payMode: "CASH", description: "CASH" },
@@ -2960,16 +2961,19 @@ export default function SalesReport() {
             </TouchableOpacity>
           )}
         </View>
-        <View style={[
-          styles.breakdownRow,
-          {
-            flexWrap: "wrap",
-            justifyContent: "flex-start",
-            width: "100%",
-            rowGap: SCREEN_W < 480 ? 8 : 10,
-            columnGap: SCREEN_W < 480 ? 8 : 10,
-          }
-        ]}>
+        <View
+          style={[
+            styles.breakdownRow,
+            {
+              flexWrap: "wrap",
+              justifyContent: "flex-start",
+              width: "100%",
+              rowGap: SCREEN_W < 480 ? 8 : 10,
+              columnGap: SCREEN_W < 480 ? 8 : 10,
+            }
+          ]}
+          onLayout={(e) => setBreakdownRowWidth(e.nativeEvent.layout.width)}
+        >
           {displayedBreakdownModes.map((item, idx) => {
             const key = item.payMode.toUpperCase().trim();
             const label = item.description || item.payMode;
@@ -2978,11 +2982,11 @@ export default function SalesReport() {
             const color = getPayModeColor(key);
             const iconName = getPayModeIoniconName(key);
 
-            // 7 per row on web, 4 on tablet, 3 on mobile
+            // 7 per row on web, 4 on tablet, 3 on mobile — use real measured width
             const numCols = SCREEN_W > 768 ? 7 : SCREEN_W > 480 ? 4 : 3;
             const gap = SCREEN_W < 480 ? 8 : 10;
-            const containerPad = 40; // breakdownCard padding 20 each side
-            const itemW = Math.floor((SCREEN_W - containerPad - (numCols - 1) * gap) / numCols);
+            const containerW = breakdownRowWidth > 0 ? breakdownRowWidth : Math.max(SCREEN_W - 80, 300);
+            const itemW = Math.floor((containerW - (numCols - 1) * gap) / numCols);
 
             const isSomeFilterApplied = activePaymentModes.length < (displayedBreakdownModes.length + 1);
             const isThisActive = activePaymentModes.includes(key);
