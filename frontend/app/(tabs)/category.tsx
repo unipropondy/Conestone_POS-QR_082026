@@ -2384,11 +2384,24 @@ export default function Category() {
 
         // Check if there is a saved screen for this table
         const { useTableNavigationStore } = require("../../stores/tableNavigationStore");
-        const lastScreen = useTableNavigationStore.getState().tableScreens[item.id];
-        if (lastScreen === "summary") {
+        const tableIdStr = item.id ? String(item.id) : "";
+        const lastScreen = tableIdStr ? useTableNavigationStore.getState().tableScreens[tableIdStr] : null;
+
+        const tableCartItems = contextId ? useCartStore.getState().carts[contextId] || [] : [];
+        const terminalSession = tableIdStr ? useTerminalPaymentStore.getState().sessions[tableIdStr] : undefined;
+
+        if (lastScreen === "payment") {
+          if (tableCartItems.length > 0 || (terminalSession && terminalSession.status === "processing")) {
+            router.push("/payment");
+          } else {
+            if (tableIdStr) {
+              useTableNavigationStore.getState().clearTableLastScreen(tableIdStr);
+              useTableNavigationStore.getState().clearSelectedMethod(tableIdStr);
+            }
+            router.push("/menu/thai_kitchen");
+          }
+        } else if (lastScreen === "summary") {
           router.push("/summary");
-        } else if (lastScreen === "payment") {
-          router.push("/payment");
         } else {
           router.push("/menu/thai_kitchen");
         }
@@ -2508,12 +2521,29 @@ export default function Category() {
 
     // Check if there is a saved screen for this table
     const { useTableNavigationStore } = require("../../stores/tableNavigationStore");
-    const lastScreen = newContext.tableId ? useTableNavigationStore.getState().tableScreens[newContext.tableId] : null;
-    if (lastScreen === "summary") {
+    const tableIdStr = newContext.tableId ? String(newContext.tableId) : "";
+    const lastScreen = tableIdStr ? useTableNavigationStore.getState().tableScreens[tableIdStr] : null;
+
+    const tableCartItems = contextId ? useCartStore.getState().carts[contextId] || [] : [];
+    const terminalSession = tableIdStr ? useTerminalPaymentStore.getState().sessions[tableIdStr] : undefined;
+
+    if (lastScreen === "payment") {
+      if (status !== 0 && (tableCartItems.length > 0 || (terminalSession && terminalSession.status === "processing"))) {
+        router.push("/payment");
+      } else {
+        if (tableIdStr) {
+          useTableNavigationStore.getState().clearTableLastScreen(tableIdStr);
+          useTableNavigationStore.getState().clearSelectedMethod(tableIdStr);
+        }
+        router.push("/menu/thai_kitchen");
+      }
+    } else if (lastScreen === "summary" && status !== 0) {
       router.push("/summary");
-    } else if (lastScreen === "payment") {
-      router.push("/payment");
     } else {
+      if (tableIdStr && status === 0) {
+        useTableNavigationStore.getState().clearTableLastScreen(tableIdStr);
+        useTableNavigationStore.getState().clearSelectedMethod(tableIdStr);
+      }
       router.push("/menu/thai_kitchen");
     }
   };

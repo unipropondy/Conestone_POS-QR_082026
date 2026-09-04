@@ -24,6 +24,7 @@ import {
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useToast } from "../components/Toast";
 import { Fonts } from "../constants/Fonts";
 import { Theme } from "../constants/theme";
@@ -50,6 +51,7 @@ import { useTableStatusStore } from "../stores/tableStatusStore";
 import { useTerminalPaymentStore } from "../stores/terminalPaymentStore";
 import { useTableNavigationStore } from "../stores/tableNavigationStore";
 import { CustomerDisplaySync } from "../utils/CustomerDisplaySync";
+import CashDrawerService from "../services/CashDrawerService";
 
 // --- ROTATING SYNC ICON COMPONENT ---
 const RotatingSyncIcon = ({ size = 16, color = "#3b82f6" }: { size?: number; color?: string }) => {
@@ -268,8 +270,21 @@ export default function PaymentScreen() {
 
   // --- YEAPAY TERMINAL ZUSTAND STORE SUBSCRIPTION & RECOVERY ---
   const terminalSession = useTerminalPaymentStore(
-    (s) => context?.tableId ? s.sessions[context.tableId] : undefined
+    (s) => context?.tableId ? s.sessions[String(context.tableId)] : undefined
   );
+
+  // Reset local payment status banner when context changes or screen gains focus (unless actively processing)
+  useEffect(() => {
+    if (isFocused) {
+      const activeTblId = context?.tableId ? String(context.tableId) : undefined;
+      const activeSession = activeTblId ? useTerminalPaymentStore.getState().sessions[activeTblId] : undefined;
+      if (!activeSession || activeSession.status !== "processing") {
+        setPaymentStatus("idle");
+        setPaymentMessage("");
+        setProcessing(false);
+      }
+    }
+  }, [isFocused, context?.tableId]);
 
   useEffect(() => {
     // Reconstruct ongoingPayments cache if we refreshed/reloaded so the request flows correctly
@@ -302,7 +317,10 @@ export default function PaymentScreen() {
           subtitle: `${currencySymbol}${terminalSession.total.toFixed(2)} paid via ${terminalSession.method}`
         });
         if (context?.tableId) {
-          useTerminalPaymentStore.getState().clearSession(context.tableId);
+          const tblIdStr = String(context.tableId);
+          useTerminalPaymentStore.getState().clearSession(tblIdStr);
+          useTableNavigationStore.getState().clearTableLastScreen(tblIdStr);
+          useTableNavigationStore.getState().clearSelectedMethod(tblIdStr);
         }
         delete ongoingPayments[cacheKey];
         executeFinalPayment();
@@ -313,6 +331,10 @@ export default function PaymentScreen() {
           [{ text: 'OK' }]
         );
         delete ongoingPayments[cacheKey];
+        if (context?.tableId) {
+          const tblIdStr = String(context.tableId);
+          useTerminalPaymentStore.getState().clearSession(tblIdStr);
+        }
       } else if (terminalSession.status === "failed") {
         Alert.alert(
           '❌ Payment Failed',
@@ -320,6 +342,10 @@ export default function PaymentScreen() {
           [{ text: 'OK' }]
         );
         delete ongoingPayments[cacheKey];
+        if (context?.tableId) {
+          const tblIdStr = String(context.tableId);
+          useTerminalPaymentStore.getState().clearSession(tblIdStr);
+        }
       }
     } else {
       if (paymentStatus !== "idle") {
@@ -1680,6 +1706,7 @@ export default function PaymentScreen() {
             rewardPointsEarned: String(result.rewardPointsEarned || 0),
             memberRewardBalance: String(result.memberRewardBalance || 0),
             mobileNo: loyaltyPhone || "",
+            tableId: context?.tableId ? String(context.tableId) : "",
           },
         });
         const ctxSnapshot = context;
@@ -1702,7 +1729,12 @@ export default function PaymentScreen() {
               }
 
               if (ctxSnapshot.tableId) {
-                useCartStore.getState().clearTableSession(ctxSnapshot.tableId);
+                const tblIdStr = String(ctxSnapshot.tableId);
+                useCartStore.getState().clearTableSession(tblIdStr);
+                useTableNavigationStore.getState().clearTableLastScreen(tblIdStr);
+                useTableNavigationStore.getState().clearSelectedMethod(tblIdStr);
+                useTerminalPaymentStore.getState().clearSession(tblIdStr);
+                delete ongoingPayments[tblIdStr];
                 closeActiveOrder(orderIdSnapshot || "");
               }
 
@@ -1721,13 +1753,21 @@ export default function PaymentScreen() {
             }
 
             if (ctxSnapshot.tableId) {
-              useCartStore.getState().clearTableSession(ctxSnapshot.tableId);
+              const tblIdStr = String(ctxSnapshot.tableId);
+              useCartStore.getState().clearTableSession(tblIdStr);
+              useTableNavigationStore.getState().clearTableLastScreen(tblIdStr);
+              useTableNavigationStore.getState().clearSelectedMethod(tblIdStr);
+              useTerminalPaymentStore.getState().clearSession(tblIdStr);
+              delete ongoingPayments[tblIdStr];
               closeActiveOrder(orderIdSnapshot || "");
             }
 
             useOrderContextStore.getState().clearOrderContext();
           }
         }
+        setPaymentStatus("idle");
+        setPaymentMessage("");
+        setProcessing(false);
       } else {
         showToast({ type: "error", message: "Failed", subtitle: result.error });
       }
@@ -4432,13 +4472,34 @@ const styles = StyleSheet.create({
     color: '#059669',
   },
   cashSection: { marginTop: 5 },
-  sectionHeader: { marginBottom: 8 },
+  sectionHeader: {
+    marginBottom: 8,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   sectionTitle: {
     fontSize: 12,
     fontFamily: Fonts.black,
     color: Theme.textPrimary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
+  },
+  openDrawerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#ffedd5",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    gap: 5,
+  },
+  openDrawerBtnText: {
+    fontSize: 11,
+    fontFamily: Fonts.bold,
+    color: "#ea580c",
   },
   cashInputBox: {
     flexDirection: "row",

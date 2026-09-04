@@ -70,7 +70,7 @@ export default class CashDrawerService {
           },
           body: JSON.stringify({
             printerType: 1, // Cashier Printer
-            content: "G3AAGRk=" // Base64 encoding of ESC p 0 25 25 (\x1B\x70\x00\x19\x19)
+            content: "EBQBAAU=" // DLE DC4 1 0 5 = real-time cash drawer open, no paper advance
           })
         });
         const resData = await response.json();

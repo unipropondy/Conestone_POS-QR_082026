@@ -82,6 +82,14 @@ export function checkPrinterReachable(ip: string, port: number = 9100, timeoutMs
  * Sends a raw data payload to a LAN/Wi-Fi thermal printer using a TCP socket connection.
  * Supports both base64 binary encoding and standard UTF-8 string encoding with tag translation.
  */
+// Known cash drawer base64 payloads — these must be sent as raw binary with
+// NO printer initialization (ESC @) or line feeds prepended, as that causes
+// the printer to advance paper before executing the drawer-open pulse.
+const CASH_DRAWER_PAYLOADS = new Set([
+  'G3AAGRk=',   // ESC p 0 25 25 — standard drawer open
+  'EBQBAAU=',   // DLE DC4 1 0 5 — real-time drawer open (no paper feed)
+]);
+
 export async function sendToPrinter(ip: string, port: number, content: string, jobId: string | number): Promise<void> {
   const targetPort = port || 9100;
 
@@ -98,14 +106,21 @@ export async function sendToPrinter(ip: string, port: number, content: string, j
     // Quick heuristic to check if content is base64 encoded binary
     const trimmed = content.trim();
     const isBase64 = /^[A-Za-z0-9+/]+={0,2}$/.test(trimmed) && (trimmed.length % 4 === 0);
+    const isCashDrawerCommand = CASH_DRAWER_PAYLOADS.has(trimmed);
 
-    if (isBase64) {
+    if (isCashDrawerCommand) {
+      // Decode the drawer command to pure binary — no extra bytes, no init
+      payload = Buffer.from(trimmed, 'base64');
+      console.log(`\n[CashDrawer] Opening drawer (raw binary only, no paper feed)\n`);
+    } else if (isBase64) {
       payload = Buffer.from(trimmed, 'base64');
     } else {
       payload = parseFormatting(content);
     }
 
-    console.log(`\n[Print]\nStarted...\n`);
+    if (!isCashDrawerCommand) {
+      console.log(`\n[Print]\nStarted...\n`);
+    }
 
     const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip.trim());
 

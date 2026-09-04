@@ -191,8 +191,16 @@ export function useGlobalSocketSync() {
         );
 
         if (computedStatus === "EMPTY" && tableId) {
-          useCartStore.getState().clearTableSession(tableId);
-          useTerminalPaymentStore.getState().clearSession(tableId);
+          const tblIdStr = String(tableId);
+          useCartStore.getState().clearTableSession(tblIdStr);
+          useTerminalPaymentStore.getState().clearSession(tblIdStr);
+          try {
+            const { useTableNavigationStore } = require("../stores/tableNavigationStore");
+            useTableNavigationStore.getState().clearTableLastScreen(tblIdStr);
+            useTableNavigationStore.getState().clearSelectedMethod(tblIdStr);
+          } catch (e) {
+            console.warn("Failed to clear table navigation on EMPTY socket status:", e);
+          }
         }
       }
 
