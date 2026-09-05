@@ -1248,7 +1248,10 @@ export default function PaymentScreen() {
   const confirmPayment = async () => {
     if (processing) return;
 
-    const selectedMethod = paymentMethods.find(m => m.payMode === method);
+    const selectedMethod = paymentMethods.find(m => 
+      m.payMode.trim().toUpperCase() === method.trim().toUpperCase() ||
+      pmNormalize(m.payMode) === pmNormalize(method)
+    );
     // Use exact normalized mode names — ONLY "Yeahpay Paynow" and "Yeahpay Card"
     // should trigger the YeahPay terminal and require Device SN.
     const _methodNorm      = pmNormalize(method);
@@ -1262,8 +1265,8 @@ export default function PaymentScreen() {
       setPaymentMessage("Processing payment...");
       setProcessing(true);
 
-      const deviceSn = selectedMethod?.deviceSn || '';
-      const salt = selectedMethod?.deviceSalt || '';
+      const deviceSn = (selectedMethod?.deviceSn || (selectedMethod as any)?.DeviceSN || '').trim();
+      const salt = (selectedMethod?.deviceSalt || (selectedMethod as any)?.DeviceSalt || '').trim();
 
       console.log('🔄 [MainPayment] Calling YeahPay terminal for:', method);
       console.log('   Amount:', total);
