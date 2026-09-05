@@ -361,7 +361,7 @@ export default function PaymentScreen() {
   const scRate = (settingsStore.serviceChargePercentage || 0) / 100;
 
   const handleTerminalPaymentSuccess = React.useCallback((methodName: string, totalAmt: number, msg?: string) => {
-    const lockKey = (context?.tableId || displayOrderId || checkoutSessionId || "default").toString();
+    const lockKey = (context?.tableId || displayOrderId || "MAIN_PAYMENT_LOCK").toString();
     if (finalizationLockRef.current[lockKey]) {
       console.log(`[YeahPay] Already finalizing payment for ${lockKey}, skipping duplicate call.`);
       return;
@@ -384,8 +384,11 @@ export default function PaymentScreen() {
       delete ongoingPayments[cacheKey];
     }
 
-    executeFinalPayment(undefined, undefined, undefined, true);
-  }, [cacheKey, context?.tableId, displayOrderId, checkoutSessionId, currencySymbol]);
+    executeFinalPayment(undefined, undefined, undefined, true).catch((err) => {
+      console.error("❌ executeFinalPayment error:", err);
+      delete finalizationLockRef.current[lockKey];
+    });
+  }, [cacheKey, context?.tableId, displayOrderId, currencySymbol]);
 
 
   useEffect(() => {
@@ -1821,9 +1824,13 @@ export default function PaymentScreen() {
         setPaymentMessage("");
         setProcessing(false);
       } else {
+        const lockKey = (context?.tableId || displayOrderId || "MAIN_PAYMENT_LOCK").toString();
+        delete finalizationLockRef.current[lockKey];
         showToast({ type: "error", message: "Failed", subtitle: result.error });
       }
     } catch (e: any) {
+      const lockKey = (context?.tableId || displayOrderId || "MAIN_PAYMENT_LOCK").toString();
+      delete finalizationLockRef.current[lockKey];
       console.error("❌ [Sales Checkout Network Failure Details]:", {
         endpoint: `${API_URL}/api/sales/save`,
         message: e?.message || e,
