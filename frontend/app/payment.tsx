@@ -273,6 +273,7 @@ export default function PaymentScreen() {
     (s) => context?.tableId ? s.sessions[String(context.tableId)] : undefined
   );
   const finalizationLockRef = React.useRef<Record<string, boolean>>({});
+  const executeFinalPaymentRef = React.useRef<any>(null);
 
   // Reset local payment status banner when context changes or screen gains focus (unless actively processing)
   useEffect(() => {
@@ -384,11 +385,16 @@ export default function PaymentScreen() {
       delete ongoingPayments[cacheKey];
     }
 
-    executeFinalPayment(undefined, undefined, undefined, true).catch((err) => {
+    const execFn = executeFinalPaymentRef.current || executeFinalPayment;
+    execFn(undefined, undefined, undefined, true).catch((err: any) => {
       console.error("❌ executeFinalPayment error:", err);
       delete finalizationLockRef.current[lockKey];
     });
   }, [cacheKey, context?.tableId, displayOrderId, currencySymbol]);
+
+  useEffect(() => {
+    executeFinalPaymentRef.current = executeFinalPayment;
+  });
 
 
   useEffect(() => {
@@ -1498,6 +1504,7 @@ export default function PaymentScreen() {
     focAmount?: number,
     bypassProcessingCheck?: boolean,
   ) => {
+    executeFinalPaymentRef.current = executeFinalPayment;
     if (processing && !bypassProcessingCheck) return;
     setProcessing(true);
     if (isLedgerCollection) {
