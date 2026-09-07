@@ -74,7 +74,9 @@ async function processSplitPayments({
     let isYeahPay = false;
 
     // ✅✅✅ CRITICAL CHECK - YeahPay Enabled?
-    if (dbPaymode.YeahPayEnabled && dbPaymode.DeviceSN) {
+    // Skip terminal call if payment was already processed via /api/yeahpay/* endpoint
+    const _terminalAlreadyDone = payment.isTerminalAlreadyProcessed === true;
+    if (dbPaymode.YeahPayEnabled && dbPaymode.DeviceSN && !_terminalAlreadyDone) {
       
       isYeahPay = true;
       console.log(`🔄 [YEAHPAY] 🔥🔥🔥 YeahPay ENABLED for ${payModeName}`);
@@ -207,9 +209,13 @@ if (!gatewayResponse.success) {
         throw apiError;
       }
     } else {
-      console.log(`ℹ️ [YEAHPAY] NOT enabled for ${payModeName}`);
-      console.log(`   YeahPayEnabled: ${dbPaymode.YeahPayEnabled}`);
-      console.log(`   DeviceSN: ${dbPaymode.DeviceSN || 'NULL'}`);
+      if (_terminalAlreadyDone) {
+        console.log(`✅ [YEAHPAY] Terminal already processed for ${payModeName} — skipping duplicate API call, saving to DB only.`);
+      } else {
+        console.log(`ℹ️ [YEAHPAY] NOT enabled for ${payModeName}`);
+        console.log(`   YeahPayEnabled: ${dbPaymode.YeahPayEnabled}`);
+        console.log(`   DeviceSN: ${dbPaymode.DeviceSN || 'NULL'}`);
+      }
     }
 
     // ============================================================

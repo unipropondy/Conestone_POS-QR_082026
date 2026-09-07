@@ -1659,11 +1659,15 @@ export default function PaymentScreen() {
               referenceNo: ""
             });
           }
+          // YeahPay: terminal was already called directly, mark as pre-processed
+          const _mNorm = method.trim().toUpperCase();
+          const _isYeahPayFinal = _mNorm === "YEAHPAY PAYNOW" || _mNorm === "YEAHPAY CARD";
           finalPayments.push({
             payModeId,
             payMode: method,
             amount: total,
-            referenceNo: ""
+            referenceNo: "",
+            isTerminalAlreadyProcessed: _isYeahPayFinal,
           });
           finalTotalAmount = total + totalFocAmount;
         }
