@@ -1894,49 +1894,49 @@ router.post("/save", async (req, res) => {
             VALUES (@SettlementID, @DiscountID, @DiscountDesc, @DiscAmount, @DiscAmount, 0);
           `);
         }
-      } else {
-        let settlementSql = `
-          INSERT INTO SettlementTotalSales (SettlementID, PayMode, SysAmount, ManualAmount, AmountDiff, ReceiptCount)
-          VALUES (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @AmountDiff, @ReceiptCount);
-
-          INSERT INTO [dbo].[SettlementDetail] (SettlementId, Paymode, SysAmount, ManualAmount, SortageOrExces, ReceiptCount, IsCollected)
-          VALUES (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @AmountDiff, @ReceiptCount, 0);
-
-          INSERT INTO SettlementTranDetail (SettlementID, PayMode, CashIn, CashOut)
-          VALUES (@SettlementID, @PayMode, @SysAmount, 0);
-        `;
-
-        if (normalizedPayMode === 'CREDIT') {
-          settlementSql += `
-            INSERT INTO SettlementCreditSales (SettlementID, PayMode, SysAmount, ManualAmount, AmountDiff)
-            VALUES (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @AmountDiff);
-          `;
-        }
-
-        if (Number(discountAmount) > 0) {
-          settlementSql += `
-            INSERT INTO SettlementDiscountDetail (SettlementId, DiscountId, Description, SysAmount, ManualAmount, SortageOrExces)
-            VALUES (@SettlementID, @DiscountID, @DiscountDesc, @DiscAmount, @DiscAmount, 0);
-          `;
-        }
-
-        const settlementReq = transaction.request()
-          .input("SettlementID", sql.UniqueIdentifier, settlementId)
-          .input("PayMode", sql.VarChar(50), normalizedPayMode)
-          .input("SysAmount", sql.Money, totalAmount || 0)
-          .input("ManualAmount", sql.Money, totalAmount || 0)
-          .input("AmountDiff", sql.Money, 0)
-          .input("ReceiptCount", sql.Numeric(18, 0), receiptCount);
-
-        if (Number(discountAmount) > 0) {
-          settlementReq.input("DiscountID", sql.UniqueIdentifier, DEFAULT_GUID)
-            .input("DiscountDesc", sql.VarChar(255), String(discountType || "Fixed") + " Discount")
-            .input("DiscAmount", sql.Money, discountAmount);
-        }
-
-        await settlementReq.query(settlementSql);
-        console.log(`[SAVE SALE] Settlement tables updated successfully.`);
       }
+      
+      let settlementSql = `
+        INSERT INTO SettlementTotalSales (SettlementID, PayMode, SysAmount, ManualAmount, AmountDiff, ReceiptCount)
+        VALUES (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @AmountDiff, @ReceiptCount);
+
+        INSERT INTO [dbo].[SettlementDetail] (SettlementId, Paymode, SysAmount, ManualAmount, SortageOrExces, ReceiptCount, IsCollected)
+        VALUES (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @AmountDiff, @ReceiptCount, 0);
+
+        INSERT INTO SettlementTranDetail (SettlementID, PayMode, CashIn, CashOut)
+        VALUES (@SettlementID, @PayMode, @SysAmount, 0);
+      `;
+
+      if (normalizedPayMode === 'CREDIT') {
+        settlementSql += `
+          INSERT INTO SettlementCreditSales (SettlementID, PayMode, SysAmount, ManualAmount, AmountDiff)
+          VALUES (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @AmountDiff);
+        `;
+      }
+
+      if (Number(discountAmount) > 0) {
+        settlementSql += `
+          INSERT INTO SettlementDiscountDetail (SettlementId, DiscountId, Description, SysAmount, ManualAmount, SortageOrExces)
+          VALUES (@SettlementID, @DiscountID, @DiscountDesc, @DiscAmount, @DiscAmount, 0);
+        `;
+      }
+
+      const settlementReq = transaction.request()
+        .input("SettlementID", sql.UniqueIdentifier, settlementId)
+        .input("PayMode", sql.VarChar(50), normalizedPayMode)
+        .input("SysAmount", sql.Money, totalAmount || 0)
+        .input("ManualAmount", sql.Money, totalAmount || 0)
+        .input("AmountDiff", sql.Money, 0)
+        .input("ReceiptCount", sql.Numeric(18, 0), receiptCount);
+
+      if (Number(discountAmount) > 0) {
+        settlementReq.input("DiscountID", sql.UniqueIdentifier, DEFAULT_GUID)
+          .input("DiscountDesc", sql.VarChar(255), String(discountType || "Fixed") + " Discount")
+          .input("DiscAmount", sql.Money, discountAmount);
+      }
+
+      await settlementReq.query(settlementSql);
+      console.log(`[SAVE SALE] Settlement tables updated successfully.`);
 
       if (items && Array.isArray(items) && items.length > 0) {
         console.log(`[SAVE SALE] Batching ${items.length} items to reduce DB round-trips...`);
