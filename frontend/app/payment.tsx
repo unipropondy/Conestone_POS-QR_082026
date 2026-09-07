@@ -1301,7 +1301,6 @@ export default function PaymentScreen() {
           const result = await response.json();
           console.log('✅ [MainPayment] Terminal response:', result);
           const responseCode = result.code;
-
           let status: "success" | "cancelled" | "failed" = "failed";
           let message = "";
 
@@ -1331,8 +1330,6 @@ export default function PaymentScreen() {
           if (status === "success") {
             handleTerminalPaymentSuccess(method, total, message);
           } else if (status === "cancelled") {
-            setProcessing(false);
-            setPaymentStatus("cancelled");
             setPaymentMessage(message);
             Alert.alert('❌ Transaction Cancelled', 'Payment was cancelled on the terminal. Please try again.');
             if (context?.tableId) {
