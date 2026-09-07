@@ -16,9 +16,9 @@ router.use(async (req, res, next) => {
         : activeStartDate;
       
       if (formattedStartDate) {
-        req.query.startDate = formattedStartDate;
-        req.query.endDate = formattedStartDate;
-        req.query.date = formattedStartDate;
+        if (!req.query.startDate) req.query.startDate = formattedStartDate;
+        if (!req.query.endDate) req.query.endDate = formattedStartDate;
+        if (!req.query.date) req.query.date = formattedStartDate;
       }
     }
   } catch (err) {
@@ -42,16 +42,15 @@ const generateRandomBillId = () => {
 };
 
 const normalizeReportPayModeSql = (columnName = "sts.PayMode", settlementIdColumn = "sh.SettlementID") => {
-  const resolvedPayMode = `COALESCE(${columnName}, (
-    SELECT TOP 1 pm2.PayMode 
+  const resolvedPayMode = `COALESCE((
+    SELECT TOP 1 LTRIM(RTRIM(pd2.Remarks))
     FROM (
-      SELECT Paymode, RestaurantBillId FROM PaymentDetailCur
+      SELECT Remarks, RestaurantBillId FROM PaymentDetailCur WHERE Remarks IS NOT NULL AND LTRIM(RTRIM(Remarks)) <> ''
       UNION ALL
-      SELECT Paymode, RestaurantBillId FROM PaymentDetail
-    ) pd2 
-    JOIN Paymode pm2 ON pd2.Paymode = pm2.Position 
+      SELECT Remarks, RestaurantBillId FROM PaymentDetail WHERE Remarks IS NOT NULL AND LTRIM(RTRIM(Remarks)) <> ''
+    ) pd2
     WHERE pd2.RestaurantBillId = ${settlementIdColumn}
-  ))`;
+  ), ${columnName})`;
 
   const rawSql = `
     UPPER(ISNULL(
@@ -62,9 +61,9 @@ const normalizeReportPayModeSql = (columnName = "sts.PayMode", settlementIdColum
           OR CAST(pm.Position AS NVARCHAR(10)) = LTRIM(RTRIM(ISNULL(${resolvedPayMode}, '')))
       ),
       CASE
+        WHEN UPPER(LTRIM(RTRIM(ISNULL(${resolvedPayMode}, '')))) IN ('YEAHPAY PAYNOW', '7') OR UPPER(${resolvedPayMode}) LIKE '%YEAHPAY%PAYNOW%' THEN 'YEAHPAY PAYNOW'
+        WHEN UPPER(LTRIM(RTRIM(ISNULL(${resolvedPayMode}, '')))) IN ('YEAHPAY CARD', '8') OR UPPER(${resolvedPayMode}) LIKE '%YEAHPAY%CARD%' THEN 'YEAHPAY CARD'
         WHEN UPPER(LTRIM(RTRIM(ISNULL(${resolvedPayMode}, '')))) IN ('CAS', 'CASH', '', '1') THEN 'CASH'
-        WHEN UPPER(LTRIM(RTRIM(ISNULL(${resolvedPayMode}, '')))) IN ('YEAHPAY PAYNOW', '7') THEN 'YEAHPAY PAYNOW'
-        WHEN UPPER(LTRIM(RTRIM(ISNULL(${resolvedPayMode}, '')))) IN ('YEAHPAY CARD', '8') THEN 'YEAHPAY CARD'
         WHEN UPPER(LTRIM(RTRIM(ISNULL(${resolvedPayMode}, '')))) IN ('CARD', 'VISA', 'MASTER', 'MASTERCARD', 'AMEX', 'DINERS') THEN 'CARD'
         WHEN (UPPER(LTRIM(RTRIM(ISNULL(${resolvedPayMode}, '')))) IN ('PAYNOW', '3') OR UPPER(${resolvedPayMode}) LIKE '%PAYNOW%') AND UPPER(${resolvedPayMode}) NOT LIKE '%YEAHPAY%' THEN 'PAYNOW'
         WHEN UPPER(LTRIM(RTRIM(ISNULL(${resolvedPayMode}, '')))) IN ('GRAB', '10') OR UPPER(${resolvedPayMode}) LIKE '%GRAB%' THEN 'GRAB'
@@ -107,10 +106,11 @@ const resolveBusinessDateColumn = (col) => {
   const cleanCol = String(col).trim();
   if (cleanCol.includes("LastSettlementDate")) {
     const prefix = cleanCol.includes(".") ? cleanCol.split(".")[0] + "." : "";
-    return `${prefix}start_date`;
+    return `COALESCE(${prefix}start_date, ${prefix}LastSettlementDate)`;
   }
   if (cleanCol.includes("ptd.CreatedDate") || cleanCol.includes("ptd.CreatedOn")) {
-    return `ptd.CreatedDate`;
+    const prefix = cleanCol.includes(".") ? cleanCol.split(".")[0] + "." : "";
+    return `COALESCE(${prefix}start_date, ${prefix}CreatedDate, ${prefix}CreatedOn)`;
   }
   if (cleanCol === "InvoiceDate") {
     return `start_date`;
@@ -170,8 +170,8 @@ const normalizePayMode = (paymentMethod = "CASH") => {
   if (raw === "CASH" || raw === "CAS") return "CASH";
 
   // YeahPay terminal modes — MUST be exact; never fall through to generic CARD/PAYNOW
-  if (raw === "YEAHPAY PAYNOW") return "Yeahpay Paynow";
-  if (raw === "YEAHPAY CARD")   return "Yeahpay Card";
+  if (raw === "YEAHPAY PAYNOW" || raw.includes("YEAHPAY PAYNOW")) return "YEAHPAY PAYNOW";
+  if (raw === "YEAHPAY CARD"   || raw.includes("YEAHPAY CARD"))   return "YEAHPAY CARD";
 
   // Standard payment modes — exact matches
   if (raw === "CARD" || raw === "VISA" || raw === "MASTER" || raw === "MASTERCARD" || raw === "AMEX" || raw === "DINERS") return "CARD";
@@ -302,7 +302,11 @@ router.get("/all", async (req, res) => {
              sh.GuestName as GuestName,
              sh.Pax as Pax
            FROM SettlementHeader sh
-           LEFT JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
+           LEFT JOIN (
+             SELECT SettlementID, LTRIM(RTRIM(PayMode)) AS PayMode, AVG(SysAmount) AS SysAmount, AVG(ManualAmount) AS ManualAmount, MAX(ReceiptCount) AS ReceiptCount
+             FROM SettlementTotalSales
+             GROUP BY SettlementID, LTRIM(RTRIM(PayMode))
+           ) sts ON sh.SettlementID = sts.SettlementID
            LEFT JOIN RestaurantInvoice ri ON sh.SettlementID = ri.RestaurantBillId
            LEFT JOIN CustomerCreditTransactions cct_sale ON sh.SettlementID = cct_sale.SettlementId AND cct_sale.TransactionType = 'CREDIT_SALE'
            LEFT JOIN MemberMaster mm ON sh.MemberId = mm.MemberId
@@ -398,7 +402,11 @@ router.get("/all", async (req, res) => {
              sh.GuestName as GuestName,
              sh.Pax as Pax
            FROM SettlementHeader sh
-           LEFT JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
+           LEFT JOIN (
+             SELECT SettlementID, LTRIM(RTRIM(PayMode)) AS PayMode, AVG(SysAmount) AS SysAmount, AVG(ManualAmount) AS ManualAmount, MAX(ReceiptCount) AS ReceiptCount
+             FROM SettlementTotalSales
+             GROUP BY SettlementID, LTRIM(RTRIM(PayMode))
+           ) sts ON sh.SettlementID = sts.SettlementID
            LEFT JOIN RestaurantInvoice ri ON sh.SettlementID = ri.RestaurantBillId
            LEFT JOIN CustomerCreditTransactions cct_sale ON sh.SettlementID = cct_sale.SettlementId AND cct_sale.TransactionType = 'CREDIT_SALE'
            LEFT JOIN MemberMaster mm ON sh.MemberId = mm.MemberId
@@ -590,10 +598,14 @@ router.get("/settlement/:id", async (req, res) => {
         .query("SELECT * FROM SettlementItemDetail WHERE SettlementID = @SettlementID");
       items = itemsResult.recordset || [];
 
-      // Fetch the payments
+      // Fetch the payments (deduplicated by PaymentId to prevent double-counting across Cur and Master tables)
       const paymentsResult = await pool.request()
         .input("SettlementID", sql.UniqueIdentifier, settlementId)
-        .query("SELECT * FROM PaymentDetailCur WHERE SettlementId = @SettlementID UNION SELECT * FROM PaymentDetail WHERE SettlementId = @SettlementID");
+        .query(`
+          SELECT * FROM PaymentDetailCur WHERE RestaurantBillId = @SettlementID OR SettlementId = @SettlementID 
+          UNION 
+          SELECT * FROM PaymentDetail WHERE RestaurantBillId = @SettlementID OR SettlementId = @SettlementID
+        `);
       payments = paymentsResult.recordset || [];
     } else {
       // Check CustomerCreditTransactions for LEDGER
@@ -773,12 +785,16 @@ router.get("/detail/:id/payments", async (req, res) => {
         const fallbackResult = await pool.request()
           .input("Id", sql.UniqueIdentifier, cleanId)
           .query(`
-            SELECT 
+            SELECT DISTINCT TOP 1
               sh.SettlementID AS ReferenceId,
               sh.SysAmount AS Amount,
               sts.PayMode
             FROM SettlementHeader sh
-            LEFT JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
+            LEFT JOIN (
+              SELECT SettlementID, LTRIM(RTRIM(PayMode)) AS PayMode, AVG(SysAmount) AS SysAmount, AVG(ManualAmount) AS ManualAmount, MAX(ReceiptCount) AS ReceiptCount
+              FROM SettlementTotalSales
+              GROUP BY SettlementID, LTRIM(RTRIM(PayMode))
+            ) sts ON sh.SettlementID = sts.SettlementID
             WHERE sh.SettlementID = @Id
           `);
         if (fallbackResult.recordset.length > 0) {
@@ -1603,7 +1619,7 @@ router.post("/save", async (req, res) => {
       }
       let billNo = ""; // Will be set to displayOrderId later
 
-      const paymodesRes = await transaction.request().query("SELECT Position, PayMode FROM [dbo].[Paymode] WHERE Active = 1");
+      const paymodesRes = await transaction.request().query("SELECT Position, PayMode, Description FROM [dbo].[Paymode] WHERE Active = 1");
       activePaymodes = paymodesRes.recordset || [];
 
       const activeOrg = await getActiveOrganization();
@@ -1894,49 +1910,49 @@ router.post("/save", async (req, res) => {
             VALUES (@SettlementID, @DiscountID, @DiscountDesc, @DiscAmount, @DiscAmount, 0);
           `);
         }
-      }
-      
-      let settlementSql = `
-        INSERT INTO SettlementTotalSales (SettlementID, PayMode, SysAmount, ManualAmount, AmountDiff, ReceiptCount)
-        VALUES (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @AmountDiff, @ReceiptCount);
+      } else {
+        let settlementSql = `
+          INSERT INTO SettlementTotalSales (SettlementID, PayMode, SysAmount, ManualAmount, AmountDiff, ReceiptCount)
+          VALUES (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @AmountDiff, @ReceiptCount);
 
-        INSERT INTO [dbo].[SettlementDetail] (SettlementId, Paymode, SysAmount, ManualAmount, SortageOrExces, ReceiptCount, IsCollected)
-        VALUES (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @AmountDiff, @ReceiptCount, 0);
+          INSERT INTO [dbo].[SettlementDetail] (SettlementId, Paymode, SysAmount, ManualAmount, SortageOrExces, ReceiptCount, IsCollected)
+          VALUES (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @AmountDiff, @ReceiptCount, 0);
 
-        INSERT INTO SettlementTranDetail (SettlementID, PayMode, CashIn, CashOut)
-        VALUES (@SettlementID, @PayMode, @SysAmount, 0);
-      `;
-
-      if (normalizedPayMode === 'CREDIT') {
-        settlementSql += `
-          INSERT INTO SettlementCreditSales (SettlementID, PayMode, SysAmount, ManualAmount, AmountDiff)
-          VALUES (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @AmountDiff);
+          INSERT INTO SettlementTranDetail (SettlementID, PayMode, CashIn, CashOut)
+          VALUES (@SettlementID, @PayMode, @SysAmount, 0);
         `;
+
+        if (normalizedPayMode === 'CREDIT') {
+          settlementSql += `
+            INSERT INTO SettlementCreditSales (SettlementID, PayMode, SysAmount, ManualAmount, AmountDiff)
+            VALUES (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @AmountDiff);
+          `;
+        }
+
+        if (Number(discountAmount) > 0) {
+          settlementSql += `
+            INSERT INTO SettlementDiscountDetail (SettlementId, DiscountId, Description, SysAmount, ManualAmount, SortageOrExces)
+            VALUES (@SettlementID, @DiscountID, @DiscountDesc, @DiscAmount, @DiscAmount, 0);
+          `;
+        }
+
+        const settlementReq = transaction.request()
+          .input("SettlementID", sql.UniqueIdentifier, settlementId)
+          .input("PayMode", sql.VarChar(50), normalizedPayMode)
+          .input("SysAmount", sql.Money, totalAmount || 0)
+          .input("ManualAmount", sql.Money, totalAmount || 0)
+          .input("AmountDiff", sql.Money, 0)
+          .input("ReceiptCount", sql.Numeric(18, 0), receiptCount);
+
+        if (Number(discountAmount) > 0) {
+          settlementReq.input("DiscountID", sql.UniqueIdentifier, DEFAULT_GUID)
+            .input("DiscountDesc", sql.VarChar(255), String(discountType || "Fixed") + " Discount")
+            .input("DiscAmount", sql.Money, discountAmount);
+        }
+
+        await settlementReq.query(settlementSql);
+        console.log(`[SAVE SALE] Settlement tables updated successfully.`);
       }
-
-      if (Number(discountAmount) > 0) {
-        settlementSql += `
-          INSERT INTO SettlementDiscountDetail (SettlementId, DiscountId, Description, SysAmount, ManualAmount, SortageOrExces)
-          VALUES (@SettlementID, @DiscountID, @DiscountDesc, @DiscAmount, @DiscAmount, 0);
-        `;
-      }
-
-      const settlementReq = transaction.request()
-        .input("SettlementID", sql.UniqueIdentifier, settlementId)
-        .input("PayMode", sql.VarChar(50), normalizedPayMode)
-        .input("SysAmount", sql.Money, totalAmount || 0)
-        .input("ManualAmount", sql.Money, totalAmount || 0)
-        .input("AmountDiff", sql.Money, 0)
-        .input("ReceiptCount", sql.Numeric(18, 0), receiptCount);
-
-      if (Number(discountAmount) > 0) {
-        settlementReq.input("DiscountID", sql.UniqueIdentifier, DEFAULT_GUID)
-          .input("DiscountDesc", sql.VarChar(255), String(discountType || "Fixed") + " Discount")
-          .input("DiscAmount", sql.Money, discountAmount);
-      }
-
-      await settlementReq.query(settlementSql);
-      console.log(`[SAVE SALE] Settlement tables updated successfully.`);
 
       if (items && Array.isArray(items) && items.length > 0) {
         console.log(`[SAVE SALE] Batching ${items.length} items to reduce DB round-trips...`);
@@ -2148,9 +2164,12 @@ router.post("/save", async (req, res) => {
         console.log(`[SAVE SALE] Step 5: Inserting Payment Data (PayMode: ${normalizedPayMode})...`);
         console.log(`[TRACE] [${Date.now()}] [SETTLEMENT_SYNC] Order: ${displayOrderId} | Settlement: ${settlementId} | Amount: ${totalAmount} | Mode: ${normalizedPayMode}`);
 
-        const paymodePosition = activePaymodes.find(x => 
-          String(x.PayMode).trim().toUpperCase() === normalizedPayMode.toUpperCase()
-        )?.Position || 1;
+        const normUpper = normalizedPayMode.toUpperCase().trim();
+        const paymodePosition = activePaymodes.find(x => {
+          const pm = String(x.PayMode || "").trim().toUpperCase();
+          const desc = String(x.Description || "").trim().toUpperCase();
+          return pm === normUpper || desc === normUpper || (normUpper.includes("YEAHPAY") && (pm.includes("YEAHPAY") || desc.includes("YEAHPAY")));
+        })?.Position || 1;
 
         try {
           const payResult = await transaction.request()
@@ -2183,6 +2202,13 @@ router.post("/save", async (req, res) => {
                 @PaymentId, @RestaurantBillId, @RestaurantBillId, @RestaurantBillId, @PaymentOrderId, @BilledFor, GETDATE(), 
                 @PaymentType, @Paymode, @Amount, @ReferenceNumber, @Remarks, @BusinessUnitId, 
                 @CreatedBy, GETDATE(), @ModifiedBy, GETDATE(), 1, @startDate
+              );
+
+              -- 3. PaymentTransactionDetails (for /detail/:id/payments breakdown)
+              INSERT INTO [dbo].[PaymentTransactionDetails] (
+                PaymentTransactionId, ReferenceType, ReferenceId, PayModeId, Amount, ReferenceNo, CreatedBy, CreatedDate, ModifiedBy, ModifiedDate
+              ) VALUES (
+                NEWID(), 'BILL', @RestaurantBillId, @Paymode, @Amount, @ReferenceNumber, @CreatedBy, GETDATE(), @ModifiedBy, GETDATE()
               );
             `);
           console.log(`[SAVE SALE] PaymentDetail Sync Success. Rows affected: ${payResult.rowsAffected.join(', ')}`);

@@ -72,7 +72,7 @@ router.get("/payment/:terminal/:userId", async (req, res) => {
     ISNULL(Remarks, '') AS PaymodeName,
     ISNULL(SUM(Amount), 0) AS Amount,
     COUNT(*) AS PayCount,
-    CAST(PaymentCollectedOn AS DATE) AS PaymentCollectedOn,
+    CAST(COALESCE(start_date, PaymentCollectedOn) AS DATE) AS PaymentCollectedOn,
     isSettlement,
     isDayend,
     Remarks,
@@ -86,7 +86,7 @@ WHERE ${dateFilter}
   ))
 GROUP BY 
     Remarks,
-    CAST(PaymentCollectedOn AS DATE),
+    CAST(COALESCE(start_date, PaymentCollectedOn) AS DATE),
     isSettlement,
     isDayend,
     TerminalCode    
