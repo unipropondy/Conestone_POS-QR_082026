@@ -284,10 +284,10 @@ router.get('/opening-cash', authenticateToken, async (req, res) => {
   try {
     let { outletId, date } = req.query;
 
-    // ✅ FIX: Convert to integer
+    // ✅ FIX: Safely parse integer or fallback to 1 for string IDs like 'SR'
     outletId = parseInt(outletId);
     if (isNaN(outletId)) {
-      return res.status(400).json({ error: 'Invalid outletId' });
+      outletId = 1;
     }
 
     const pool = getPool();
@@ -326,10 +326,10 @@ router.post('/opening-cash', authenticateToken, async (req, res) => {
   try {
     let { outletId, settlementDate, notes, coins, total, cashierName } = req.body;
 
-    // ✅ FIX: Convert to integer
+    // ✅ FIX: Safely parse integer or fallback to 1 for string IDs like 'SR'
     outletId = parseInt(outletId);
     if (isNaN(outletId)) {
-      return res.status(400).json({ error: 'Invalid outletId' });
+      outletId = 1;
     }
 
     const openingCashJSON = JSON.stringify({ notes, coins });
