@@ -313,11 +313,14 @@ export default function PaymentScreen() {
       }
 
       if (terminalSession.status === "success") {
-        handleTerminalPaymentSuccess(
-          terminalSession.method || method,
-          terminalSession.total || total,
-          terminalSession.message
-        );
+        const lockKey = (context?.tableId || displayOrderId || "MAIN_PAYMENT_LOCK").toString();
+        if (!finalizationLockRef.current[lockKey]) {
+          handleTerminalPaymentSuccess(
+            terminalSession.method || method,
+            terminalSession.total || total,
+            terminalSession.message
+          );
+        }
       } else if (terminalSession.status === "cancelled") {
         Alert.alert(
           '❌ Transaction Cancelled',
@@ -1735,7 +1738,7 @@ export default function PaymentScreen() {
         body: JSON.stringify(saleData),
       });
       const result = await response.json();
-      if (result.success) {
+      if (result.success || response.status === 409) {
         // Navigate first — let the success screen mount fully before mutating store state
         router.push({
           pathname: "/payment_success" as any,
