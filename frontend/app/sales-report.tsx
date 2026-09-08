@@ -205,7 +205,7 @@ export default function SalesReport() {
   ]);
   const [sortOrder, setSortOrder] = useState<"NEWEST" | "HIGHEST">("NEWEST");
   const [detailReportType, setDetailReportType] =
-    useState<DetailReportType | null>(null);
+    useState<DetailReportType | null>("CATEGORY");
   const [categoryReport, setCategoryReport] = useState<any[]>([]);
   const [dishReport, setDishReport] = useState<any[]>([]);
   const [settlementReport, setSettlementReport] = useState<any[]>([]);
@@ -474,7 +474,12 @@ export default function SalesReport() {
         console.error("Failed to fetch active business day in fetchData:", err);
       }
 
-      await Promise.all([fetchSales(), fetchSummary(), fetchPaymentMethods()]);
+      await Promise.all([
+        fetchSales(), 
+        fetchSummary(), 
+        fetchPaymentMethods(),
+        detailReportType ? fetchDetailReport(detailReportType, selectedFilter) : Promise.resolve()
+      ]);
     } catch (error) {
       console.error("Error:", error);
     } finally {
@@ -625,7 +630,7 @@ export default function SalesReport() {
     if (detailReportType) {
       fetchDetailReport(detailReportType, selectedFilter);
     }
-  }, [selectedFilter, detailReportType, fetchDetailReport]);
+  }, [selectedFilter, selectedDate, detailReportType, fetchDetailReport]);
 
   const fetchSales = async () => {
     try {
@@ -2200,7 +2205,7 @@ export default function SalesReport() {
                           styles.qtyCell,
                         ]}
                       >
-                        {Number(row.Sold || 0).toFixed(0)}
+                        {Number(row.Sold || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       </Text>
                       <Text
                         style={[
@@ -2210,7 +2215,7 @@ export default function SalesReport() {
                           { color: "#dc2626" },
                         ]}
                       >
-                        {Number(row.Voided || 0).toFixed(0)}
+                        {Number(row.Voided || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       </Text>
                       <Text
                         style={[
@@ -2310,7 +2315,7 @@ export default function SalesReport() {
                             { fontFamily: Fonts.black, fontSize: 13, color: Theme.textPrimary },
                           ]}
                         >
-                          {catQty}
+                          {Number(catQty || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                         </Text>
                         <Text
                           style={[
@@ -2320,7 +2325,7 @@ export default function SalesReport() {
                             { fontFamily: Fonts.black, fontSize: 13, color: "#dc2626" },
                           ]}
                         >
-                          {catVoid}
+                          {Number(catVoid || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                         </Text>
                         <Text
                           style={[
@@ -2392,7 +2397,7 @@ export default function SalesReport() {
                                 styles.qtyCell,
                               ]}
                             >
-                              {Number(row.Sold || 0).toFixed(0)}
+                              {Number(row.Sold || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                             </Text>
                             <Text
                               style={[
@@ -2402,7 +2407,7 @@ export default function SalesReport() {
                                 { color: "#dc2626" },
                               ]}
                             >
-                              {Number(row.Voided || 0).toFixed(0)}
+                              {Number(row.Voided || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                             </Text>
                             <Text
                               style={[

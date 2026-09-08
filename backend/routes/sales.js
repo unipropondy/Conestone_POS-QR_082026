@@ -6,24 +6,7 @@ router.use(authenticateToken);
 const { poolPromise } = require("../config/db");
 
 router.use(async (req, res, next) => {
-  try {
-    const pool = await poolPromise;
-    const activeDayRes = await pool.request().query("SELECT TOP 1 StartDate FROM DateEntry ORDER BY CreatedDate DESC");
-    if (activeDayRes.recordset.length > 0) {
-      const activeStartDate = activeDayRes.recordset[0].StartDate;
-      const formattedStartDate = activeStartDate instanceof Date 
-        ? activeStartDate.toISOString().split("T")[0] 
-        : activeStartDate;
-      
-      if (formattedStartDate) {
-        if (!req.query.startDate) req.query.startDate = formattedStartDate;
-        if (!req.query.endDate) req.query.endDate = formattedStartDate;
-        if (!req.query.date) req.query.date = formattedStartDate;
-      }
-    }
-  } catch (err) {
-    console.error("Error in sales report active date middleware:", err);
-  }
+  // Pass through query params untouched from client
   next();
 });
 
@@ -112,8 +95,9 @@ const resolveBusinessDateColumn = (col) => {
     const prefix = cleanCol.includes(".") ? cleanCol.split(".")[0] + "." : "";
     return `COALESCE(${prefix}start_date, ${prefix}CreatedDate, ${prefix}CreatedOn)`;
   }
-  if (cleanCol === "InvoiceDate") {
-    return `start_date`;
+  if (cleanCol.includes("InvoiceDate")) {
+    const prefix = cleanCol.includes(".") ? cleanCol.split(".")[0] + "." : "";
+    return `COALESCE(${prefix}start_date, ${prefix}InvoiceDate)`;
   }
   return cleanCol;
 };
@@ -866,7 +850,8 @@ router.get("/category", async (req, res) => {
     const date = req.query.date;
     const { startDate, endDate } = req.query;
     const appDateWhereSql = await getReportDateWhereSql(filter, "sh.LastSettlementDate", date, startDate, endDate);
-    const legacyDateWhereSql = await getReportDateWhereSql(filter, "InvoiceDate", date, startDate, endDate);
+    const legacyDateWhereSql = await getReportDateWhereSql(filter, "ri.InvoiceDate", date, startDate, endDate);
+    const roDateWhereSql = await getReportDateWhereSql(filter, "ro.start_date", date, startDate, endDate);
     console.log(`[REPORT API] type=category filter=${filter} date=${date || 'today'} range=${startDate || ''}..${endDate || ''}`);
 
     const result = await pool.request().query(`
@@ -911,7 +896,7 @@ router.get("/category", async (req, res) => {
           LEFT JOIN DishMaster d ON rod.DishId = d.DishId
           LEFT JOIN DishGroupMaster dg ON d.DishGroupId = dg.DishGroupId
           LEFT JOIN CategoryMaster cm ON dg.CategoryId = cm.CategoryId
-          WHERE ${legacyDateWhereSql.replace(/start_date/g, 'ri.start_date')}
+          WHERE ${legacyDateWhereSql}
             AND NOT EXISTS (
               SELECT 1 FROM SettlementHeader sh_dup 
               WHERE sh_dup.SettlementID = ri.RestaurantBillId
@@ -930,7 +915,7 @@ router.get("/category", async (req, res) => {
           LEFT JOIN DishMaster d ON rod.DishId = d.DishId
           LEFT JOIN DishGroupMaster dg ON d.DishGroupId = dg.DishGroupId
           LEFT JOIN CategoryMaster cm ON dg.CategoryId = cm.CategoryId
-          WHERE ${appDateWhereSql.replace(/sh\.start_date/g, 'ro.start_date')}
+          WHERE ${roDateWhereSql}
             AND ISNULL(ro.StatusCode, 0) = 3
             AND NOT EXISTS (
               SELECT 1 FROM SettlementHeader sh_dup 
@@ -967,7 +952,8 @@ router.get("/dish", async (req, res) => {
     const date = req.query.date;
     const { startDate, endDate } = req.query;
     const appDateWhereSql = await getReportDateWhereSql(filter, "sh.LastSettlementDate", date, startDate, endDate);
-    const legacyDateWhereSql = await getReportDateWhereSql(filter, "InvoiceDate", date, startDate, endDate);
+    const legacyDateWhereSql = await getReportDateWhereSql(filter, "ri.InvoiceDate", date, startDate, endDate);
+    const roDateWhereSql = await getReportDateWhereSql(filter, "ro.start_date", date, startDate, endDate);
     console.log(`[REPORT API] type=dish filter=${filter} date=${date || 'today'} range=${startDate || ''}..${endDate || ''}`);
 
     // Fetch takeaway charges configuration to avoid SQL subqueries within aggregation functions
@@ -1028,7 +1014,7 @@ router.get("/dish", async (req, res) => {
           LEFT JOIN DishMaster d ON rod.DishId = d.DishId
           LEFT JOIN DishGroupMaster dg ON d.DishGroupId = dg.DishGroupId
           LEFT JOIN CategoryMaster cm ON dg.CategoryId = cm.CategoryId
-          WHERE ${legacyDateWhereSql.replace(/start_date/g, 'ri.start_date')}
+          WHERE ${legacyDateWhereSql}
             AND NOT EXISTS (
               SELECT 1 FROM SettlementHeader sh_dup 
               WHERE sh_dup.SettlementID = ri.RestaurantBillId
@@ -1055,7 +1041,7 @@ router.get("/dish", async (req, res) => {
           LEFT JOIN DishMaster d ON rod.DishId = d.DishId
           LEFT JOIN DishGroupMaster dg ON d.DishGroupId = dg.DishGroupId
           LEFT JOIN CategoryMaster cm ON dg.CategoryId = cm.CategoryId
-          WHERE ${appDateWhereSql.replace(/sh\.start_date/g, 'ro.start_date')}
+          WHERE ${roDateWhereSql}
             AND ISNULL(ro.StatusCode, 0) = 3
             AND NOT EXISTS (
               SELECT 1 FROM SettlementHeader sh_dup 
