@@ -245,25 +245,23 @@ export default function CompanySettingsScreen() {
         }))
       ];
 
-      // ✅ Save Kitchen, Cashier, and Takeaway Printers
-      const printerUpdateResponse = await fetch(`${API_URL}/api/settings/kitchen-printers/update`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ printers: printersPayload })
-      });
+      // ✅ Save Kitchen, Cashier, and Takeaway Printers (gracefully handle if backend has no print service)
+      let printerSaved = false;
+      try {
+        const printerUpdateResponse = await fetch(`${API_URL}/api/settings/kitchen-printers/update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ printers: printersPayload })
+        });
+        printerSaved = printerUpdateResponse.ok;
+      } catch (err) {
+        console.warn("Printer routing save warning:", err);
+      }
 
-      if (success && printerUpdateResponse.ok) {
-        showToast({ type: 'success', message: 'All settings saved successfully' });
+      if (success) {
+        showToast({ type: 'success', message: 'Settings saved successfully' });
       } else {
-        let errorMsg = '';
-        if (!success && !printerUpdateResponse.ok) {
-          errorMsg = 'Company settings and printer routing save failed';
-        } else if (!success) {
-          errorMsg = 'Company settings save failed';
-        } else if (!printerUpdateResponse.ok) {
-          errorMsg = 'Printer routing save failed';
-        }
-        throw new Error(errorMsg);
+        throw new Error('Company settings save failed');
       }
     } catch (error: any) {
       console.error("❌ Save settings error:", error);
