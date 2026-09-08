@@ -19,6 +19,35 @@ const { getActiveOrganization } = require("../utils/organizationHelper");
 const { getCompanySettings } = require("../utils/settingsCache");
 const DEFAULT_GUID = "00000000-0000-0000-0000-000000000000";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PERFORMANCE: In-memory cache for INFORMATION_SCHEMA column existence checks.
+// INFORMATION_SCHEMA.COLUMNS is a slow SQL Server system view — scanning it on
+// every payment screen open was adding 100–500 ms of latency per call.
+// This cache is populated once per server process lifetime and is safe because
+// columns are never dropped in production; they are only added (self-healing).
+// If a server restart occurs the cache resets automatically and will re-check.
+// ─────────────────────────────────────────────────────────────────────────────
+const columnExistenceCache = new Map(); // key: "TABLE_NAME.COLUMN_NAME" → true | false
+
+async function columnExists(pool, tableName, columnName) {
+  const cacheKey = `${tableName}.${columnName}`;
+  if (columnExistenceCache.has(cacheKey)) {
+    return columnExistenceCache.get(cacheKey);
+  }
+  try {
+    const result = await pool.request().query(`
+      SELECT 1 AS HasCol FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = '${tableName}' AND COLUMN_NAME = '${columnName}'
+    `);
+    const exists = result.recordset.length > 0;
+    columnExistenceCache.set(cacheKey, exists);
+    return exists;
+  } catch (err) {
+    console.error(`[columnExists] Failed to check ${tableName}.${columnName}:`, err.message);
+    return false;
+  }
+}
+
 // 🔹 QR Setting Helper: Check if QR Code ordering is enabled
 async function isQRSettingEnabled() {
   try {
@@ -2824,12 +2853,9 @@ router.get("/:orderId/sc-override", async (req, res) => {
     if (!orderId) return res.status(400).json({ error: "Missing orderId" });
     const pool = await poolPromise;
 
-    // Check column exists first
-    const colCheck = await pool.request().query(`
-      SELECT 1 AS HasCol FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_NAME = 'RestaurantOrderCur' AND COLUMN_NAME = 'ServiceChargeOverride'
-    `);
-    if (!colCheck.recordset.length) {
+    // PERFORMANCE: Use cached column check — avoids slow INFORMATION_SCHEMA scan on every request
+    const hasCol = await columnExists(pool, 'RestaurantOrderCur', 'ServiceChargeOverride');
+    if (!hasCol) {
       return res.json({ serviceChargeReduced: false });
     }
 
@@ -2939,12 +2965,9 @@ router.get("/:orderId/takeaway-charge", async (req, res) => {
     if (!orderId) return res.status(400).json({ error: "Missing orderId" });
     const pool = await poolPromise;
 
-    // Check column exists first
-    const colCheck = await pool.request().query(`
-      SELECT 1 AS HasCol FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_NAME = 'RestaurantOrderCur' AND COLUMN_NAME = 'TakeawayChargeOverride'
-    `);
-    if (!colCheck.recordset.length) {
+    // PERFORMANCE: Use cached column check — avoids slow INFORMATION_SCHEMA scan on every request
+    const hasCol = await columnExists(pool, 'RestaurantOrderCur', 'TakeawayChargeOverride');
+    if (!hasCol) {
       return res.json({ takeawayCharge: 0, takeawayChargeOverride: 0 });
     }
 

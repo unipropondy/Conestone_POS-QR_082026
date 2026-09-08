@@ -621,46 +621,51 @@ export default function PaymentScreen() {
   const [takeawayChargeAmt, setTakeawayChargeAmt] = useState(0);
 
   useEffect(() => {
-    console.log("🔍 [Payment] SC & Takeaway override useEffect triggered. displayOrderId:", displayOrderId, "isFocused:", isFocused);
-    if (displayOrderId && isFocused) {
-      const token = useAuthStore.getState().token;
-      const url = `${API_URL}/api/orders/${displayOrderId}/sc-override`;
-      console.log("📡 [Payment] Fetching SC override from:", url);
-      fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
-        .then((r) => r.json())
-        .then((d) => {
-          console.log("✅ [Payment] SC override response:", d);
-          if (d?.serviceChargeReduced) {
-            setScReduced(true);
-            useServiceChargeOverrideStore.getState().setOverride(displayOrderId, true);
-          } else {
-            setScReduced(false);
-            useServiceChargeOverrideStore.getState().setOverride(displayOrderId, false);
-          }
-        })
-        .catch((e) => {
-          console.warn("❌ [Payment] Failed to fetch KDS/SC override status:", e);
-        });
+    if (!displayOrderId || !isFocused) return;
 
+    const token = useAuthStore.getState().token;
+
+    if (__DEV__) {
+      console.log("🔍 [Payment] SC & Takeaway override fetch triggered. displayOrderId:", displayOrderId);
+    }
+
+    // PERFORMANCE: Run both override fetches in parallel — previously sequential
+    Promise.all([
+      fetch(`${API_URL}/api/orders/${displayOrderId}/sc-override`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }).then((r) => r.json()),
       fetch(`${API_URL}/api/orders/${displayOrderId}/takeaway-charge`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }).then((r) => r.json()),
+    ])
+      .then(([scData, twData]) => {
+        if (__DEV__) {
+          console.log("✅ [Payment] SC override response:", scData);
+          console.log("✅ [Payment] Takeaway charge response:", twData);
+        }
+
+        // SC override
+        if (scData?.serviceChargeReduced) {
+          setScReduced(true);
+          useServiceChargeOverrideStore.getState().setOverride(displayOrderId, true);
+        } else {
+          setScReduced(false);
+          useServiceChargeOverrideStore.getState().setOverride(displayOrderId, false);
+        }
+
+        // Takeaway charge override
+        if (twData?.takeawayChargeOverride === 1) {
+          setTakeawayChargeApplied(false);
+        } else {
+          setTakeawayChargeApplied(true);
+        }
+        setTakeawayChargeAmt(twData?.takeawayCharge || 0);
       })
-        .then((r) => r.json())
-        .then((d) => {
-          console.log("✅ [Payment] Takeaway charge response:", d);
-          if (d?.takeawayChargeOverride === 1) {
-            setTakeawayChargeApplied(false);
-          } else {
-            setTakeawayChargeApplied(true);
-          }
-          setTakeawayChargeAmt(d?.takeawayCharge || 0);
-        })
-        .catch((e) => {
-          console.warn("❌ [Payment] Failed to fetch takeaway-charge status:", e);
-        });
-    }
+      .catch((e) => {
+        if (__DEV__) {
+          console.warn("❌ [Payment] Failed to fetch SC/takeaway override status:", e);
+        }
+      });
   }, [displayOrderId, isFocused]);
 
   const [pendingPayments, setPendingPayments] = useState<any[] | null>(null);
@@ -713,14 +718,18 @@ export default function PaymentScreen() {
   const [loyaltyDiscountItems, setLoyaltyDiscountItems] = useState<any[]>([]);
   const [loyaltyDiscountAmount, setLoyaltyDiscountAmount] = useState(0);
 
+  // ── Loyalty dish rewards: debounced to avoid hammering the API on rapid
+  // cart socket updates. The 400 ms window lets back-to-back changes settle
+  // before issuing a new request. Business logic is unchanged.
   useEffect(() => {
-    const fetchDishLoyaltyRewards = async () => {
-      const phone = loyaltyPhone ? loyaltyPhone.trim() : "";
-      if (!phone || finalItemsRaw.length === 0 || isLedgerCollection) {
-        setLoyaltyDiscountItems([]);
-        setLoyaltyDiscountAmount(0);
-        return;
-      }
+    const phone = loyaltyPhone ? loyaltyPhone.trim() : "";
+    if (!phone || finalItemsRaw.length === 0 || isLedgerCollection) {
+      setLoyaltyDiscountItems([]);
+      setLoyaltyDiscountAmount(0);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
       try {
         const token = useAuthStore.getState().token;
         const mappedItems = finalItemsRaw.map((i: any) => ({
@@ -761,9 +770,9 @@ export default function PaymentScreen() {
         setLoyaltyDiscountItems([]);
         setLoyaltyDiscountAmount(0);
       }
-    };
+    }, 400); // debounce: wait 400 ms for cart changes to settle
 
-    fetchDishLoyaltyRewards();
+    return () => clearTimeout(timer);
   }, [loyaltyPhone, finalItemsRaw, isLedgerCollection]);
 
   const finalItems = useMemo(() => {
@@ -773,36 +782,38 @@ export default function PaymentScreen() {
   useEffect(() => {
     const init = async () => {
       const store = usePaymentSettingsStore.getState();
-      if (!store.hasLoadedMethods) {
-        setLoadingMethods(true);
-        try {
-          await Promise.all([
+      const settingsPromise = store.hasLoadedMethods
+        ? Promise.resolve()
+        : Promise.all([
             store.fetchSettings(),
             store.fetchPaymentMethods()
-          ]);
-        } catch (err) {
-          if (__DEV__) {
-            console.error("Failed to fetch settings/methods on payment screen mount:", err);
-          }
-        }
-      }
+          ]).catch((err) => {
+            if (__DEV__) console.error("Failed to fetch settings/methods on payment screen mount:", err);
+          });
+
+      // PERFORMANCE: Run table/order ID fetch in parallel with payment settings fetch
+      const tablePromise = context?.tableId
+        ? (async () => {
+            try {
+              const res = await fetch(`${API_URL}/api/tables/${context.tableId}`);
+              const data = await res.json();
+              const oid = data.table?.currentOrderId || data.table?.CurrentOrderId;
+              if (data.success && oid) {
+                useCartStore.getState().setTableOrderId(context.tableId!, oid);
+              }
+              // Fetch the cart items from the database to ensure they are loaded on direct routing
+              if (cart.length === 0) {
+                await useCartStore.getState().fetchCartFromDB(context.tableId!);
+              }
+            } catch (err) {
+              console.error("Failed to sync official Order ID and Cart:", err);
+            }
+          })()
+        : Promise.resolve();
+
+      // Wait for both to finish before applying payment methods from cache
+      await Promise.all([settingsPromise, tablePromise]);
       applyPaymentMethodsFromCache();
-      if (context?.tableId) {
-        try {
-          const res = await fetch(`${API_URL}/api/tables/${context.tableId}`);
-          const data = await res.json();
-          const oid = data.table?.currentOrderId || data.table?.CurrentOrderId;
-          if (data.success && oid) {
-            useCartStore.getState().setTableOrderId(context.tableId, oid);
-          }
-          // Fetch the cart items from the database to ensure they are loaded on direct routing
-          if (cart.length === 0) {
-            await useCartStore.getState().fetchCartFromDB(context.tableId);
-          }
-        } catch (err) {
-          console.error("Failed to sync official Order ID and Cart:", err);
-        }
-      }
     };
     init();
   }, []);
