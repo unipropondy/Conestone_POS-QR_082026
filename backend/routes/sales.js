@@ -1562,23 +1562,35 @@ router.post("/save", async (req, res) => {
       }
     }
 
-    // 2. Fallback check for non-split payments using orderId
+    // 2. Fast Fallback check for non-split payments using orderId
     if (orderId && !isSplitParsed) {
-      const existingCheck = await pool.request()
-        .input("OrderId", sql.NVarChar(100), orderId)
-        .query(`
+      const isGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId);
+      const reqCheck = pool.request().input("OrderId", sql.NVarChar(100), orderId);
+      let queryStr = "";
+      if (isGuid) {
+        reqCheck.input("OrderGuid", sql.UniqueIdentifier, orderId);
+        queryStr = `
           SELECT TOP 1 sh.SettlementID, sh.BillNo 
-          FROM SettlementHeader sh
-          LEFT JOIN RestaurantInvoice ri ON sh.SettlementID = ri.RestaurantBillId
-          WHERE (sh.BillNo = @OrderId 
-             OR (TRY_CAST(@OrderId AS UNIQUEIDENTIFIER) IS NOT NULL AND ri.OrderId = TRY_CAST(@OrderId AS UNIQUEIDENTIFIER))
-             OR ri.OrderId = (SELECT TOP 1 OrderId FROM RestaurantOrder WHERE OrderNumber = @OrderId))
+          FROM SettlementHeader sh WITH (NOLOCK)
+          LEFT JOIN RestaurantInvoice ri WITH (NOLOCK) ON sh.SettlementID = ri.RestaurantBillId
+          WHERE (sh.BillNo = @OrderId OR ri.OrderId = @OrderGuid)
             AND NOT EXISTS (
-              SELECT 1 FROM RestaurantOrderCur roc 
-              WHERE (roc.OrderNumber = @OrderId OR roc.OrderId = ri.OrderId)
-                AND roc.isOrderClosed = 0
+              SELECT 1 FROM RestaurantOrderCur roc WITH (NOLOCK)
+              WHERE roc.OrderId = @OrderGuid AND roc.isOrderClosed = 0
             )
-        `);
+        `;
+      } else {
+        queryStr = `
+          SELECT TOP 1 sh.SettlementID, sh.BillNo 
+          FROM SettlementHeader sh WITH (NOLOCK)
+          WHERE sh.BillNo = @OrderId
+            AND NOT EXISTS (
+              SELECT 1 FROM RestaurantOrderCur roc WITH (NOLOCK)
+              WHERE roc.OrderNumber = @OrderId AND roc.isOrderClosed = 0
+            )
+        `;
+      }
+      const existingCheck = await reqCheck.query(queryStr);
       if (existingCheck.recordset.length > 0) {
         const existing = existingCheck.recordset[0];
         console.log(`[SAVE SALE] Duplicate check matched by OrderId! Settlement already exists for order ${orderId}. BillNo: ${existing.BillNo}`);
@@ -1958,14 +1970,14 @@ router.post("/save", async (req, res) => {
           if (dishNames.length > 0) {
             dishNames.forEach((name, i) => {
               req.input(`name_${i}`, sql.NVarChar(255), name);
-              whereClauses.push(`LTRIM(RTRIM(LOWER(d.Name))) = LTRIM(RTRIM(LOWER(@name_${i})))`);
+              whereClauses.push(`d.Name = @name_${i}`);
             });
           }
           const queryStr = `
             SELECT d.DishId, d.Name, d.DishGroupId, dg.CategoryId, cm.CategoryName, dg.DishGroupName, ISNULL(d.IsSplitDish, 0) as IsSplitDish
             FROM DishMaster d WITH (NOLOCK)
-            LEFT JOIN DishGroupMaster dg ON d.DishGroupId = dg.DishGroupId
-            LEFT JOIN CategoryMaster cm ON dg.CategoryId = cm.CategoryId
+            LEFT JOIN DishGroupMaster dg WITH (NOLOCK) ON d.DishGroupId = dg.DishGroupId
+            LEFT JOIN CategoryMaster cm WITH (NOLOCK) ON dg.CategoryId = cm.CategoryId
             WHERE ${whereClauses.join(" OR ")}
           `;
           const metaRes = await req.query(queryStr);
@@ -2032,36 +2044,40 @@ router.post("/save", async (req, res) => {
             .input("orderNo", sql.NVarChar(100), displayOrderId)
             .query(`
               SELECT d.OrderDetailId, d.DishId, d.DishName, d.SongName, d.Quantity, d.PricePerUnit, dish.DishGroupId, dg.CategoryId, cm.CategoryName, dg.DishGroupName
-              FROM RestaurantOrderDetailCur d
-              JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId
-              LEFT JOIN DishMaster dish ON d.DishId = dish.DishId
-              LEFT JOIN DishGroupMaster dg ON dish.DishGroupId = dg.DishGroupId
-              LEFT JOIN CategoryMaster cm ON dg.CategoryId = cm.CategoryId
+              FROM RestaurantOrderDetailCur d WITH (NOLOCK)
+              JOIN RestaurantOrderCur h WITH (NOLOCK) ON d.OrderId = h.OrderId
+              LEFT JOIN DishMaster dish WITH (NOLOCK) ON d.DishId = dish.DishId
+              LEFT JOIN DishGroupMaster dg WITH (NOLOCK) ON dish.DishGroupId = dg.DishGroupId
+              LEFT JOIN CategoryMaster cm WITH (NOLOCK) ON dg.CategoryId = cm.CategoryId
               WHERE h.OrderNumber = @orderNo AND d.StatusCode = 0
             `);
           
-          for (const v of dbVoids.recordset) {
-            await transaction.request()
-              .input("sid", sql.UniqueIdentifier, settlementId)
-              .input("dishId", sql.UniqueIdentifier, v.DishId)
-              .input("dishName", sql.NVarChar(255), v.DishName)
-              .input("songName", sql.NVarChar(255), v.SongName || "")
-              .input("qty", sql.Decimal(18, 3), v.Quantity)
-              .input("price", sql.Decimal(18, 2), v.PricePerUnit)
-              .input("catId", sql.UniqueIdentifier, v.CategoryId)
-              .input("catName", sql.NVarChar(255), v.CategoryName)
-              .input("groupName", sql.NVarChar(255), v.DishGroupName)
-              .input("OrderDetailId", sql.UniqueIdentifier, toGuidOrNull(v.OrderDetailId))
-              .input("startDate", sql.Date, formattedStartDate)
-              .query(`
+          if (dbVoids.recordset.length > 0) {
+            const voidReq = transaction.request();
+            voidReq.input("sid", sql.UniqueIdentifier, settlementId);
+            voidReq.input("startDate", sql.Date, formattedStartDate);
+            
+            const voidQueries = dbVoids.recordset.map((v, idx) => {
+              voidReq.input(`dishId_${idx}`, sql.UniqueIdentifier, v.DishId);
+              voidReq.input(`dishName_${idx}`, sql.NVarChar(255), v.DishName);
+              voidReq.input(`songName_${idx}`, sql.NVarChar(255), v.SongName || "");
+              voidReq.input(`qty_${idx}`, sql.Decimal(18, 3), v.Quantity);
+              voidReq.input(`price_${idx}`, sql.Decimal(18, 2), v.PricePerUnit);
+              voidReq.input(`catId_${idx}`, sql.UniqueIdentifier, v.CategoryId);
+              voidReq.input(`catName_${idx}`, sql.NVarChar(255), v.CategoryName);
+              voidReq.input(`groupName_${idx}`, sql.NVarChar(255), v.DishGroupName);
+              voidReq.input(`OrderDetailId_${idx}`, sql.UniqueIdentifier, toGuidOrNull(v.OrderDetailId));
+              return `
                 INSERT INTO SettlementItemDetail (
                   SettlementID, DishId, DishName, SongName, Qty, Price, Status, OrderDateTime,
                   CategoryId, CategoryName, SubCategoryName, OrderDetailId, start_date
                 ) VALUES (
-                  @sid, @dishId, @dishName, @songName, @qty, @price, 'VOIDED', GETDATE(),
-                  @catId, @catName, @groupName, @OrderDetailId, @startDate
-                )
-              `);
+                  @sid, @dishId_${idx}, @dishName_${idx}, @songName_${idx}, @qty_${idx}, @price_${idx}, 'VOIDED', GETDATE(),
+                  @catId_${idx}, @catName_${idx}, @groupName_${idx}, @OrderDetailId_${idx}, @startDate
+                );
+              `;
+            });
+            await voidReq.query(voidQueries.join("\n"));
           }
           console.log(`[SAVE SALE] Captured ${dbVoids.recordset.length} voided items for reporting.`);
         } catch (voidErr) {
@@ -2192,9 +2208,9 @@ router.post("/save", async (req, res) => {
 
               -- 3. PaymentTransactionDetails (for /detail/:id/payments breakdown)
               INSERT INTO [dbo].[PaymentTransactionDetails] (
-                PaymentTransactionId, ReferenceType, ReferenceId, PayModeId, Amount, ReferenceNo, CreatedBy, CreatedDate, ModifiedBy, ModifiedDate
+                PaymentTransactionId, ReferenceType, ReferenceId, PayModeId, Amount, ReferenceNo, CreatedBy, CreatedDate
               ) VALUES (
-                NEWID(), 'BILL', @RestaurantBillId, @Paymode, @Amount, @ReferenceNumber, @CreatedBy, GETDATE(), @ModifiedBy, GETDATE()
+                NEWID(), 'BILL', @RestaurantBillId, @Paymode, @Amount, @ReferenceNumber, @CreatedBy, GETDATE()
               );
             `);
           console.log(`[SAVE SALE] PaymentDetail Sync Success. Rows affected: ${payResult.rowsAffected.join(', ')}`);
@@ -2639,8 +2655,8 @@ router.post("/save", async (req, res) => {
             .input("Section", sql.NVarChar(100), section || null)
             .input("CreatedBy", sql.UniqueIdentifier, sanitizeGuid(cashierId))
             .query(`
-              INSERT INTO servermaster (SER_ID, SER_NAME, TableNo, OrderId, Section, CreatedBy, CreatedDate, ModifiedBy, ModifiedDate)
-              VALUES (@SER_ID, @SER_NAME, @TableNo, @OrderId, @Section, @CreatedBy, GETDATE(), @CreatedBy, GETDATE())
+              INSERT INTO servermaster (SER_ID, SER_NAME, TableNo, OrderId, Section, CreatedBy, CreatedDate)
+              VALUES (@SER_ID, @SER_NAME, @TableNo, @OrderId, @Section, @CreatedBy, GETDATE())
             `);
         } catch (serverErr) {
           console.error("⚠️ [SAVE SALE] servermaster insert failed:", serverErr.message);
@@ -2740,7 +2756,7 @@ router.post("/save", async (req, res) => {
          await rewardPool.request()
            .input("NewCredit", sql.Decimal(18, 4), newCredit)
            .input("MemberId", sql.UniqueIdentifier, toGuidOrNull(rewardMemberId))
-           .query(`UPDATE MemberMaster SET RewardCredit = @NewCredit, ModifiedDate = GETDATE() WHERE MemberId = @MemberId`);
+           .query(`UPDATE MemberMaster SET RewardCredit = @NewCredit WHERE MemberId = @MemberId`);
  
          // 5. Log the redemption to RewardPointDetails (if applicable)
          if (deductAmount > 0) {

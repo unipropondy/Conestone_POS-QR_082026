@@ -1794,16 +1794,41 @@ export default function PaymentScreen() {
         const orderIdSnapshot = displayOrderId;
         const isOrderClosedFromResponse = !!result.isOrderClosed;
         
-        if (ctxSnapshot) {
-          if (splitSnapshot) {
-            const { splitPartsCount, setSplitPartsCount, setActiveSplitItems } =
-              useCartStore.getState();
+        setTimeout(() => {
+          if (ctxSnapshot) {
+            if (splitSnapshot) {
+              const { splitPartsCount, setSplitPartsCount, setActiveSplitItems } =
+                useCartStore.getState();
 
-            if (isOrderClosedFromResponse || splitPartsCount === 1) {
-              // All items paid/closed, do full table cleanup
-              setSplitPartsCount(null);
-              setActiveSplitItems(null);
+              if (isOrderClosedFromResponse || splitPartsCount === 1) {
+                // All items paid/closed, do full table cleanup
+                setSplitPartsCount(null);
+                setActiveSplitItems(null);
 
+                if (ctxSnapshot.orderType === "DINE_IN") {
+                  clearTable(ctxSnapshot.section!, ctxSnapshot.tableNo!);
+                }
+
+                if (ctxSnapshot.tableId) {
+                  const tblIdStr = String(ctxSnapshot.tableId);
+                  useCartStore.getState().clearTableSession(tblIdStr);
+                  useTableNavigationStore.getState().clearTableLastScreen(tblIdStr);
+                  useTableNavigationStore.getState().clearSelectedMethod(tblIdStr);
+                  useTerminalPaymentStore.getState().clearSession(tblIdStr);
+                  delete ongoingPayments[tblIdStr];
+                  closeActiveOrder(orderIdSnapshot || "");
+                }
+
+                useOrderContextStore.getState().clearOrderContext();
+              } else {
+                // Still has items or parts left: decrement parts count if split by parts
+                if (splitPartsCount && splitPartsCount > 1) {
+                  setSplitPartsCount(splitPartsCount - 1);
+                }
+                setActiveSplitItems(null);
+              }
+            } else {
+              // Normal payment cleanup
               if (ctxSnapshot.orderType === "DINE_IN") {
                 clearTable(ctxSnapshot.section!, ctxSnapshot.tableNo!);
               }
@@ -1819,35 +1844,12 @@ export default function PaymentScreen() {
               }
 
               useOrderContextStore.getState().clearOrderContext();
-            } else {
-              // Still has items or parts left: decrement parts count if split by parts
-              if (splitPartsCount && splitPartsCount > 1) {
-                setSplitPartsCount(splitPartsCount - 1);
-              }
-              setActiveSplitItems(null);
             }
-          } else {
-            // Normal payment cleanup
-            if (ctxSnapshot.orderType === "DINE_IN") {
-              clearTable(ctxSnapshot.section!, ctxSnapshot.tableNo!);
-            }
-
-            if (ctxSnapshot.tableId) {
-              const tblIdStr = String(ctxSnapshot.tableId);
-              useCartStore.getState().clearTableSession(tblIdStr);
-              useTableNavigationStore.getState().clearTableLastScreen(tblIdStr);
-              useTableNavigationStore.getState().clearSelectedMethod(tblIdStr);
-              useTerminalPaymentStore.getState().clearSession(tblIdStr);
-              delete ongoingPayments[tblIdStr];
-              closeActiveOrder(orderIdSnapshot || "");
-            }
-
-            useOrderContextStore.getState().clearOrderContext();
           }
-        }
-        setPaymentStatus("idle");
-        setPaymentMessage("");
-        setProcessing(false);
+          setPaymentStatus("idle");
+          setPaymentMessage("");
+          setProcessing(false);
+        }, 50);
       } else {
         const lockKey = (context?.tableId || displayOrderId || "MAIN_PAYMENT_LOCK").toString();
         delete finalizationLockRef.current[lockKey];
