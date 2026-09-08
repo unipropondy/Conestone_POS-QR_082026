@@ -205,7 +205,7 @@ export default function SalesReport() {
   ]);
   const [sortOrder, setSortOrder] = useState<"NEWEST" | "HIGHEST">("NEWEST");
   const [detailReportType, setDetailReportType] =
-    useState<DetailReportType | null>("CATEGORY");
+    useState<DetailReportType | null>(null);
   const [categoryReport, setCategoryReport] = useState<any[]>([]);
   const [dishReport, setDishReport] = useState<any[]>([]);
   const [settlementReport, setSettlementReport] = useState<any[]>([]);
