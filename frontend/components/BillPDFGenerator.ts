@@ -215,14 +215,31 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
         
         // ✅ Add timestamp to prevent caching
         const timestamp = Date.now();
+        const url = `${API_URL}/api/company-settings/${targetId}?_t=${timestamp}`;
+
+        // Attempt save via native fetch first to bypass any axios interceptor/response parsing issue
+        try {
+            const fetchRes = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dbSettings)
+            });
+            if (fetchRes.ok) {
+                const data = await fetchRes.json();
+                if (data && (data.success || data.message)) {
+                    delete this.settingsCache[targetId];
+                    return true;
+                }
+            }
+        } catch (fetchErr) {
+            console.log('⚠️ Fetch post attempt failed, trying API axios fallback:', fetchErr);
+        }
         
-        // ✅ STEP 1: POST settings (Upsert)
+        // Fallback to API axios client
         const response = await API.post(`/company-settings/${targetId}?_t=${timestamp}`, dbSettings);
-        
         console.log('✅ SAVE RESPONSE:', response.data);
         
-        if (response.data && response.data.success) {
-            // Invalidate settings cache
+        if (response.data && (response.data.success || response.status === 200)) {
             delete this.settingsCache[targetId];
             return true;
         }

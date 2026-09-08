@@ -255,7 +255,14 @@ export default function CompanySettingsScreen() {
       if (success && printerUpdateResponse.ok) {
         showToast({ type: 'success', message: 'All settings saved successfully' });
       } else {
-        const errorMsg = !success ? 'Company settings save failed' : 'Printer routing save failed';
+        let errorMsg = 'Save failed';
+        if (!success && !printerUpdateResponse.ok) {
+          errorMsg = 'Company settings and printer routing save failed';
+        } else if (!success) {
+          errorMsg = 'Company settings save failed';
+        } else if (!printerUpdateResponse.ok) {
+          errorMsg = 'Printer routing save failed';
+        }
         throw new Error(errorMsg);
       }
     } catch (error: any) {
