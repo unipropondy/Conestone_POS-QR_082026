@@ -225,11 +225,8 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
                 body: JSON.stringify(dbSettings)
             });
             if (fetchRes.ok) {
-                const data = await fetchRes.json();
-                if (data && (data.success || data.message)) {
-                    delete this.settingsCache[targetId];
-                    return true;
-                }
+                delete this.settingsCache[targetId];
+                return true;
             }
         } catch (fetchErr) {
             console.log('⚠️ Fetch post attempt failed, trying API axios fallback:', fetchErr);
@@ -239,7 +236,7 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
         const response = await API.post(`/company-settings/${targetId}?_t=${timestamp}`, dbSettings);
         console.log('✅ SAVE RESPONSE:', response.data);
         
-        if (response.data && (response.data.success || response.status === 200)) {
+        if (response.status === 200 || response.status === 201 || (response.data && (response.data.success !== false))) {
             delete this.settingsCache[targetId];
             return true;
         }
