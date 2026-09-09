@@ -2117,10 +2117,14 @@ router.post("/update-item-status", async (req, res) => {
       const qrCheck = await pool
         .request()
         .input("id", sql.UniqueIdentifier, lineItemId).query(`
-          SELECT tm.TableId, tm.TableNumber, tm.entry_status, tm.PAYMENT_STATUS, h.OrderId
+          SELECT tm.TableId, tm.TableNumber, tm.DiningSection, tm.entry_status, tm.PAYMENT_STATUS, h.OrderId, h.OrderNumber
           FROM RestaurantOrderDetailCur d
           JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId
-          JOIN TableMaster tm ON RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(tm.TableNumber))
+          JOIN TableMaster tm ON (
+            RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(tm.TableNumber))
+            OR (TRY_CAST(h.Tableno AS UNIQUEIDENTIFIER) IS NOT NULL AND tm.TableId = TRY_CAST(h.Tableno AS UNIQUEIDENTIFIER))
+            OR (TRY_CAST(h.Tableno AS INT) IS NOT NULL AND TRY_CAST(tm.TableNumber AS INT) = TRY_CAST(h.Tableno AS INT))
+          )
           WHERE d.OrderDetailId = @id
         `);
 
@@ -2142,7 +2146,7 @@ router.post("/update-item-status", async (req, res) => {
 
           if (pendingItems.recordset[0].count === 0) {
             console.log(
-              `[QR Auto-Clear] Table ${row.TableNumber} has all items served/voided. Auto-clearing.`,
+              `[QR Auto-Clear] Table ${row.TableNumber} has all items served/voided. Auto-clearing on all devices...`,
             );
 
             // Delete CartItems
@@ -2172,19 +2176,42 @@ router.post("/update-item-status", async (req, res) => {
                 WHERE OrderId = @orderId
               `);
 
-            // Sync status to trigger frontend refresh
-            syncTableStatus(req, row.TableId).catch(() => { });
-            req.app.get("io")?.emit("tables_updated");
-            req.app.get("io")?.emit("table_status_updated", {
-              tableId: cleanTableId.toLowerCase(),
-              status: 0,
-              totalAmount: 0,
-              entryStatus: null,
-              paymentStatus: null,
-            });
-            req.app
-              .get("io")
-              ?.emit("cart_updated", { tableId: cleanTableId.toLowerCase() });
+            // Sync status and emit definitive table_status_updated
+            const updated = await syncTableStatus(req, row.TableId).catch(() => null);
+
+            const sectionMap = {
+              1: "SECTION_1",
+              2: "SECTION_2",
+              3: "SECTION_3",
+              4: "TAKEAWAY",
+            };
+            const section = sectionMap[String(row.DiningSection)] || row.DiningSection || "SECTION_1";
+            const orderNo = row.OrderNumber || row.OrderId;
+
+            // Broadcast ALL real-time socket signals so EVERY device updates instantly
+            const io = req.app.get("io");
+            if (io) {
+              io.emit("order_closed", {
+                tableId: cleanTableId.toLowerCase(),
+                tableNo: row.TableNumber,
+                section: section,
+                orderId: orderNo,
+              });
+
+              io.emit("order_status_update", {
+                tableId: cleanTableId.toLowerCase(),
+                action: "CLOSE",
+                orderId: orderNo,
+              });
+
+              io.emit("active_kitchen_updated", {
+                tableId: cleanTableId.toLowerCase(),
+                reason: "qr_all_served_auto_clear",
+              });
+
+              io.emit("tables_updated");
+              io.emit("cart_updated", { tableId: cleanTableId.toLowerCase() });
+            }
           }
         }
       }
