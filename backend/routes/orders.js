@@ -2223,7 +2223,8 @@ router.get("/active-kitchen", async (req, res) => {
       SELECT 
         d.OrderDetailId as lineItemId, d.DishId as id, d.Quantity as qty, d.StatusCode, 
         d.PricePerUnit as price,
-        h.OrderNumber as orderId, dish.Name as name, h.Tableno as tableNo, 
+        h.OrderNumber as orderId, dish.Name as name, 
+        ISNULL(NULLIF(RTRIM(LTRIM(tm.TableNumber)), ''), RTRIM(LTRIM(h.Tableno))) as tableNo, 
         d.Remarks as note, d.ModifiersJSON, d.ComboDetailsJSON, d.isTakeAway, 
         DATEDIFF(SECOND, ISNULL(d.CreatedOn, h.CreatedOn), GETDATE()) as elapsedSeconds,
         ISNULL(ckt.KitchenTypeCode, '0') as KitchenTypeCode, 
@@ -2246,9 +2247,9 @@ router.get("/active-kitchen", async (req, res) => {
         OR (TRY_CAST(h.Tableno AS INT) IS NOT NULL AND TRY_CAST(tm.TableNumber AS INT) = TRY_CAST(h.Tableno AS INT))
       )
       WHERE (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
-      -- 🚀 Include only active items: SENT (2), READY (3), SERVED (4), HOLD (5)
+      -- 🚀 Include active items: NEW (1), SENT (2), READY (3), SERVED (4), HOLD (5)
       -- VOIDED items (StatusCode=0) are excluded — they should never appear on KDS or printer
-      AND d.StatusCode IN (2,3,4,5)
+      AND d.StatusCode IN (1,2,3,4,5)
       AND h.OrderNumber IS NOT NULL
       AND h.OrderNumber NOT LIKE 'TEMP-%'
       AND h.OrderNumber NOT IN ('PENDING', 'NEW', '#NEW', '')
@@ -2261,14 +2262,17 @@ router.get("/active-kitchen", async (req, res) => {
           !row.tableNo ||
           row.tableNo === "TAKEAWAY" ||
           String(row.tableNo).trim().startsWith("TW");
+        const rawSec = String(row.DiningSection || "").trim();
         const sectionMap = {
-          1: "SECTION_1",
-          2: "SECTION_2",
-          3: "SECTION_3",
-          4: "TAKEAWAY",
+          "1": "SECTION_1",
+          "2": "SECTION_2",
+          "3": "SECTION_3",
+          "4": "TAKEAWAY",
         };
-        const normalizedSection =
-          sectionMap[String(row.DiningSection)] || row.DiningSection || "";
+        let normalizedSection = sectionMap[rawSec] || rawSec;
+        if (normalizedSection.toUpperCase().startsWith("SECTION")) {
+          normalizedSection = normalizedSection.toUpperCase().replace(/SECTION[-_ ]*/i, "SECTION_");
+        }
 
         orders[row.orderId] = {
           orderId: row.orderId,
@@ -2320,7 +2324,8 @@ router.get("/active-sessions", async (req, res) => {
       SELECT 
         d.OrderDetailId as lineItemId, d.DishId as id, d.Quantity as qty, d.StatusCode, 
         d.PricePerUnit as price,
-        h.OrderNumber as orderId, dish.Name as name, h.Tableno as tableNo, 
+        h.OrderNumber as orderId, dish.Name as name, 
+        ISNULL(NULLIF(RTRIM(LTRIM(tm.TableNumber)), ''), RTRIM(LTRIM(h.Tableno))) as tableNo, 
         d.Remarks as note, d.ModifiersJSON, d.ComboDetailsJSON, d.isTakeAway, 
         DATEDIFF(SECOND, ISNULL(d.CreatedOn, h.CreatedOn), GETDATE()) as elapsedSeconds,
         ISNULL(ckt.KitchenTypeCode, '0') as KitchenTypeCode, 

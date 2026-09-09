@@ -413,10 +413,13 @@ const storeCreator: StateCreator<
             if (cleanLocalId === cleanIncomingId) return true;
             
             if (lo.context.orderType === "DINE_IN" && cleanContext.orderType === "DINE_IN") {
-              return (
-                String(lo.context.section || "").trim().toLowerCase() === String(cleanContext.section || "").trim().toLowerCase() &&
-                String(lo.context.tableNo || "").trim().toLowerCase() === String(cleanContext.tableNo || "").trim().toLowerCase()
-              );
+              const sec1 = String(lo.context.section || "").trim().toUpperCase().replace(/[- ]+/g, "_");
+              const sec2 = String(cleanContext.section || "").trim().toUpperCase().replace(/[- ]+/g, "_");
+              const normSec1 = sec1.startsWith("SECTION") ? sec1.replace(/SECTION[-_ ]*/i, "SECTION_") : (sec1 === "1" ? "SECTION_1" : sec1);
+              const normSec2 = sec2.startsWith("SECTION") ? sec2.replace(/SECTION[-_ ]*/i, "SECTION_") : (sec2 === "1" ? "SECTION_1" : sec2);
+              const tbl1 = String(lo.context.tableNo || "").trim().toLowerCase();
+              const tbl2 = String(cleanContext.tableNo || "").trim().toLowerCase();
+              return normSec1 === normSec2 && tbl1 === tbl2;
             }
             if (lo.context.orderType === "TAKEAWAY" && cleanContext.orderType === "TAKEAWAY") {
               return String(lo.context.takeawayNo || "").trim().toLowerCase() === String(cleanContext.takeawayNo || "").trim().toLowerCase();
@@ -424,7 +427,15 @@ const storeCreator: StateCreator<
             return false;
           });
           
-          if (!localOrder) return normalizedApiOrder;
+          if (!localOrder) {
+            return {
+              ...normalizedApiOrder,
+              items: normalizedApiOrder.items.map((apiItem: any) => ({
+                ...apiItem,
+                readyAt: apiItem.status === "READY" ? (apiItem.readyAt || Date.now()) : apiItem.readyAt
+              }))
+            };
+          }
           
           return {
             ...normalizedApiOrder,
@@ -435,10 +446,14 @@ const storeCreator: StateCreator<
                 const localUpdateRecent = (Date.now() - (localItem.readyAt || 0)) < 5000;
                 if (localUpdateRecent) return localItem;
               }
-              if (!localItem) return apiItem;
+              const readyAt = apiItem.status === "READY" 
+                ? (localItem?.readyAt || apiItem.readyAt || Date.now()) 
+                : undefined;
+              if (!localItem) return { ...apiItem, readyAt };
               return {
                 ...localItem,
                 ...apiItem,
+                readyAt,
                 note: apiItem.note ?? localItem.note ?? "",
                 isTakeaway: apiItem.isTakeaway ?? localItem.isTakeaway ?? false,
                 modifiers: apiItem.modifiers?.length ? apiItem.modifiers : (localItem.modifiers || []),
