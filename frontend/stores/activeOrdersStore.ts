@@ -364,7 +364,10 @@ const storeCreator: StateCreator<
 
     const timeout = setTimeout(async () => {
       const { isFetching } = get();
-      if (isFetching) {
+      const lastFetchTs = (get() as any)._lastFetchTs || 0;
+      const isStuck = isFetching && (Date.now() - lastFetchTs > 3000);
+
+      if (isFetching && !isStuck) {
         if ((get() as any)._fetchRetryTimeout) {
           clearTimeout((get() as any)._fetchRetryTimeout);
         }
@@ -377,10 +380,11 @@ const storeCreator: StateCreator<
       // Do not fetch if not logged in to prevent 401 errors
       const token = useAuthStore.getState().token;
       if (!token) {
+        set({ isFetching: false });
         return;
       }
       
-      set({ isFetching: true });
+      set({ isFetching: true, _lastFetchTs: Date.now() } as any);
       try {
         const res = await fetch(`${API_URL}/api/orders/active-kitchen`, {
           headers: {
@@ -516,8 +520,14 @@ export const useActiveOrdersStore = create<ActiveOrdersState>()(
       storage: createJSONStorage(() => 
         Platform.OS === 'web' ? window.localStorage : AsyncStorage
       ),
+      partialize: (state) => ({
+        activeOrders: state.activeOrders,
+      }),
       onRehydrateStorage: () => (state) => {
-        state?.setHasHydrated(true);
+        if (state) {
+          state.setHasHydrated(true);
+          (state as any).isFetching = false;
+        }
       },
     }
   )
