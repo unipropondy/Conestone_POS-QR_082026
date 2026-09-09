@@ -1484,6 +1484,11 @@ router.post("/send", async (req, res) => {
         if (isQROrder) {
           io.emit("print_jobs_available", { orderId: finalOrderId, storeId: "STORE_001" });
         }
+        io.emit("active_kitchen_updated", {
+          tableId: cleanId.toLowerCase(),
+          orderId: finalOrderId,
+          reason: "order_sent",
+        });
       }
 
       // 5. Refresh totals and notify instantly
@@ -2235,7 +2240,11 @@ router.get("/active-kitchen", async (req, res) => {
         SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn
         FROM PrintMaster WHERE IsActive = 1 AND IsEnabled = 1 AND PrinterType = 2
       ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
-      LEFT JOIN TableMaster tm ON RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(tm.TableNumber))
+      LEFT JOIN TableMaster tm ON (
+        RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(tm.TableNumber))
+        OR (TRY_CAST(h.Tableno AS UNIQUEIDENTIFIER) IS NOT NULL AND tm.TableId = TRY_CAST(h.Tableno AS UNIQUEIDENTIFIER))
+        OR (TRY_CAST(h.Tableno AS INT) IS NOT NULL AND TRY_CAST(tm.TableNumber AS INT) = TRY_CAST(h.Tableno AS INT))
+      )
       WHERE (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
       -- 🚀 Include only active items: SENT (2), READY (3), SERVED (4), HOLD (5)
       -- VOIDED items (StatusCode=0) are excluded — they should never appear on KDS or printer
@@ -2328,7 +2337,11 @@ router.get("/active-sessions", async (req, res) => {
         SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn
         FROM PrintMaster WHERE IsActive = 1 AND IsEnabled = 1 AND PrinterType = 2
       ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
-      LEFT JOIN TableMaster tm ON RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(tm.TableNumber))
+      LEFT JOIN TableMaster tm ON (
+        RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(tm.TableNumber))
+        OR (TRY_CAST(h.Tableno AS UNIQUEIDENTIFIER) IS NOT NULL AND tm.TableId = TRY_CAST(h.Tableno AS UNIQUEIDENTIFIER))
+        OR (TRY_CAST(h.Tableno AS INT) IS NOT NULL AND TRY_CAST(tm.TableNumber AS INT) = TRY_CAST(h.Tableno AS INT))
+      )
       WHERE (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
       -- 🚀 Include all non-voided items: NEW (1), SENT (2), READY (3), SERVED (4), HOLD (5)
       AND d.StatusCode <> 0
@@ -2782,9 +2795,28 @@ router.post("/payment-status", async (req, res) => {
       .request()
       .input("tid", sql.VarChar(50), cleanId)
       .input("status", sql.Int, paymentStatus).query(`
-      UPDATE TableMaster SET PAYMENT_STATUS = @status WHERE TableId = @tid
+      UPDATE TableMaster 
+      SET PAYMENT_STATUS = @status 
+      WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER))
     `);
-    res.json({ success: true });
+
+    const updated = await syncTableStatus(req, cleanId);
+
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("qr_payment_confirmed", {
+        tableId: cleanId.toLowerCase(),
+        tableNo: updated?.tableNo,
+        orderId: updated?.CurrentOrderId,
+        paymentStatus: paymentStatus,
+      });
+      io.emit("active_kitchen_updated", {
+        tableId: cleanId.toLowerCase(),
+        reason: "payment_status_changed",
+      });
+    }
+
+    res.json({ success: true, ...updated });
   } catch (err) {
     console.error("❌ payment-status Error:", err.message);
     res.status(500).json({ error: err.message });

@@ -364,7 +364,15 @@ const storeCreator: StateCreator<
 
     const timeout = setTimeout(async () => {
       const { isFetching } = get();
-      if (isFetching) return;
+      if (isFetching) {
+        if ((get() as any)._fetchRetryTimeout) {
+          clearTimeout((get() as any)._fetchRetryTimeout);
+        }
+        (get() as any)._fetchRetryTimeout = setTimeout(() => {
+          get().fetchActiveKitchenOrders();
+        }, 150);
+        return;
+      }
       
       // Do not fetch if not logged in to prevent 401 errors
       const token = useAuthStore.getState().token;

@@ -416,6 +416,13 @@ export function useGlobalSocketSync() {
       }
     };
 
+    const handleActiveKitchenUpdated = (payload?: any) => {
+      if (__DEV__) {
+        console.log("🍳 [Socket-Global] Active kitchen updated signal received:", payload);
+      }
+      useActiveOrdersStore.getState().fetchActiveKitchenOrders();
+    };
+
     socket.on("connect", handleConnect);
     socket.on("connect_error", handleConnectError);
     socket.on("new_order", handleNewOrder);
@@ -425,6 +432,7 @@ export function useGlobalSocketSync() {
     socket.on("order_status_update", handleOrderStatusUpdate);
     socket.on("order_closed", handleOrderClosed);
     socket.on("qr_payment_confirmed", handleQrPaymentConfirmed);
+    socket.on("active_kitchen_updated", handleActiveKitchenUpdated);
     socket.on("cart_change", handleCartChange);
     socket.on("print_jobs_available", handlePrintJobsAvailable);
     socket.on("terminal_payment_sync", handleTerminalPaymentSync);
@@ -443,6 +451,7 @@ export function useGlobalSocketSync() {
       socket.off("order_status_update", handleOrderStatusUpdate);
       socket.off("order_closed", handleOrderClosed);
       socket.off("qr_payment_confirmed", handleQrPaymentConfirmed);
+      socket.off("active_kitchen_updated", handleActiveKitchenUpdated);
       socket.off("cart_change", handleCartChange);
       socket.off("print_jobs_available", handlePrintJobsAvailable);
       socket.off("terminal_payment_sync", handleTerminalPaymentSync);
