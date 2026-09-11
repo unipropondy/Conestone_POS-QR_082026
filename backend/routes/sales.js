@@ -2131,9 +2131,10 @@ router.post("/save", async (req, res) => {
                 .input("OutstandingAmount", sql.Decimal(18, 2), finalCreditAmount)
                 .input("Status", sql.NVarChar(20), finalCreditAmount > 0 ? 'OPEN' : 'PAID')
                 .input("CreatedBy", sql.UniqueIdentifier, toGuidOrNull(cashierId))
+                .input("startDate", sql.Date, formattedStartDate)
                 .query(`
-                  INSERT INTO CustomerCreditTransactions (MemberId, SettlementId, BillNo, TransactionType, BillAmount, PaidAmount, OutstandingAmount, Status, Remarks, CreatedBy, CustomerType)
-                  VALUES (@MemberId, @SettlementId, @BillNo, 'CREDIT_SALE', @BillAmount, @PaidAmount, @OutstandingAmount, @Status, 'Split member credit purchase', @CreatedBy, 'MEMBER')
+                  INSERT INTO CustomerCreditTransactions (MemberId, SettlementId, BillNo, TransactionType, BillAmount, PaidAmount, OutstandingAmount, Status, Remarks, CreatedBy, CustomerType, start_date)
+                  VALUES (@MemberId, @SettlementId, @BillNo, 'CREDIT_SALE', @BillAmount, @PaidAmount, @OutstandingAmount, @Status, 'Split member credit purchase', @CreatedBy, 'MEMBER', @startDate)
                 `);
               console.log(`[SAVE SALE DIAGNOSTIC] Balance update success (MEMBER): memberId=${memberId}, oldBalance=${oldBalance}, newBalance=${newBalance}`);
             } else if (customerType === "CREDIT") {
@@ -2151,9 +2152,10 @@ router.post("/save", async (req, res) => {
                 .input("OutstandingAmount", sql.Decimal(18, 2), totalCreditAndMember)
                 .input("Status", sql.NVarChar(20), 'OPEN')
                 .input("CreatedBy", sql.UniqueIdentifier, toGuidOrNull(cashierId))
+                .input("startDate", sql.Date, formattedStartDate)
                 .query(`
-                  INSERT INTO CustomerCreditTransactions (MemberId, SettlementId, BillNo, TransactionType, BillAmount, PaidAmount, OutstandingAmount, Status, Remarks, CreatedBy, CustomerType)
-                  VALUES (@MemberId, @SettlementId, @BillNo, 'CREDIT_SALE', @BillAmount, @PaidAmount, @OutstandingAmount, @Status, 'Split credit purchase', @CreatedBy, 'CREDIT')
+                  INSERT INTO CustomerCreditTransactions (MemberId, SettlementId, BillNo, TransactionType, BillAmount, PaidAmount, OutstandingAmount, Status, Remarks, CreatedBy, CustomerType, start_date)
+                  VALUES (@MemberId, @SettlementId, @BillNo, 'CREDIT_SALE', @BillAmount, @PaidAmount, @OutstandingAmount, @Status, 'Split credit purchase', @CreatedBy, 'CREDIT', @startDate)
                 `);
               console.log(`[SAVE SALE DIAGNOSTIC] Balance update success (CREDIT): memberId=${memberId}, oldBalance=${oldBalance}, newBalance=${newBalance}`);
             }
@@ -2245,9 +2247,10 @@ router.post("/save", async (req, res) => {
               .input("BillNo", sql.NVarChar(50), finalBillNo)
               .input("Amount", sql.Decimal(18, 2), creditAmount)
               .input("CreatedBy", sql.UniqueIdentifier, toGuidOrNull(cashierId))
+              .input("startDate", sql.Date, formattedStartDate)
               .query(`
-                INSERT INTO CustomerCreditTransactions (MemberId, SettlementId, BillNo, TransactionType, BillAmount, PaidAmount, OutstandingAmount, Status, Remarks, CreatedBy, CustomerType)
-                VALUES (@MemberId, @SettlementId, @BillNo, 'CREDIT_SALE', @Amount, 0, @Amount, 'OPEN', 'Member credit purchase', @CreatedBy, 'MEMBER')
+                INSERT INTO CustomerCreditTransactions (MemberId, SettlementId, BillNo, TransactionType, BillAmount, PaidAmount, OutstandingAmount, Status, Remarks, CreatedBy, CustomerType, start_date)
+                VALUES (@MemberId, @SettlementId, @BillNo, 'CREDIT_SALE', @Amount, 0, @Amount, 'OPEN', 'Member credit purchase', @CreatedBy, 'MEMBER', @startDate)
               `);
             console.log(`[SAVE SALE DIAGNOSTIC] Balance update success (MEMBER): memberId=${memberId}, oldBalance=${oldBalance}, newBalance=${newBalance}`);
           } else if (customerType === "CREDIT") {
@@ -2262,9 +2265,10 @@ router.post("/save", async (req, res) => {
               .input("BillNo", sql.NVarChar(50), finalBillNo)
               .input("Amount", sql.Decimal(18, 2), creditAmount)
               .input("CreatedBy", sql.UniqueIdentifier, toGuidOrNull(cashierId))
+              .input("startDate", sql.Date, formattedStartDate)
               .query(`
-                INSERT INTO CustomerCreditTransactions (MemberId, SettlementId, BillNo, TransactionType, BillAmount, PaidAmount, OutstandingAmount, Status, Remarks, CreatedBy, CustomerType)
-                VALUES (@MemberId, @SettlementId, @BillNo, 'CREDIT_SALE', @Amount, 0, @Amount, 'OPEN', 'Credit purchase', @CreatedBy, 'CREDIT')
+                INSERT INTO CustomerCreditTransactions (MemberId, SettlementId, BillNo, TransactionType, BillAmount, PaidAmount, OutstandingAmount, Status, Remarks, CreatedBy, CustomerType, start_date)
+                VALUES (@MemberId, @SettlementId, @BillNo, 'CREDIT_SALE', @Amount, 0, @Amount, 'OPEN', 'Credit purchase', @CreatedBy, 'CREDIT', @startDate)
               `);
             console.log(`[SAVE SALE DIAGNOSTIC] Balance update success (CREDIT): memberId=${memberId}, oldBalance=${oldBalance}, newBalance=${newBalance}`);
           }
