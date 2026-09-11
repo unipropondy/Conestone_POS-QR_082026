@@ -274,6 +274,7 @@ export default function SalesReport() {
   // Supervisor Password Verification State
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordValue, setPasswordValue] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const [passwordAction, setPasswordAction] = useState<{
     onSuccess: () => void;
     title: string;
@@ -283,6 +284,7 @@ export default function SalesReport() {
 
   const promptPassword = (title: string, description: string, role: string, onSuccess: () => void) => {
     setPasswordValue("");
+    setPasswordError("");
     setPasswordAction({ onSuccess, title, description, role });
     setShowPasswordModal(true);
   };
@@ -1639,29 +1641,36 @@ export default function SalesReport() {
 
   const handleConfirmChangePayment = async (newPayMode: string, splits?: any[], memberId?: string, creditCustomerId?: string) => {
     if (!selectedOrder) return;
-    try {
-      setShowChangePaymentModal(false);
-      setShowMemberModal(false);
-      setLoadingDetails(true);
-      const res = await fetch(`${API_URL}/api/sales/settlement/${selectedOrder.SettlementID}/change-payment`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payMode: newPayMode, splits, memberId, creditCustomerId }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast({ type: "success", message: "Payment mode updated successfully" });
-        await refreshOrder(selectedOrder.SettlementID);
-        fetchSales();
-      } else {
-        showToast({ type: "error", message: data.error || "Failed to update payment mode" });
+    promptPassword(
+      "Admin Password Required",
+      "Enter Admin password to save payment mode change:",
+      "ADMIN",
+      async () => {
+        try {
+          setShowChangePaymentModal(false);
+          setShowMemberModal(false);
+          setLoadingDetails(true);
+          const res = await fetch(`${API_URL}/api/sales/settlement/${selectedOrder.SettlementID}/change-payment`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ payMode: newPayMode, splits, memberId, creditCustomerId }),
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            showToast({ type: "success", message: "Payment mode updated successfully" });
+            await refreshOrder(selectedOrder.SettlementID);
+            fetchSales();
+          } else {
+            showToast({ type: "error", message: data.error || "Failed to update payment mode" });
+          }
+        } catch (err: any) {
+          console.error(err);
+          showToast({ type: "error", message: err.message || "An error occurred" });
+        } finally {
+          setLoadingDetails(false);
+        }
       }
-    } catch (err: any) {
-      console.error(err);
-      showToast({ type: "error", message: err.message || "An error occurred" });
-    } finally {
-      setLoadingDetails(false);
-    }
+    );
   };
 
   const toggleVoidItemSelection = (id: string) => {
@@ -4875,21 +4884,30 @@ export default function SalesReport() {
                   secureTextEntry
                   autoFocus
                   value={passwordValue}
-                  onChangeText={setPasswordValue}
+                  onChangeText={(val) => {
+                    setPasswordValue(val);
+                    if (passwordError) setPasswordError("");
+                  }}
                   style={{
                     borderWidth: 1,
-                    borderColor: Theme.border + "50",
+                    borderColor: passwordError ? "#EF4444" : Theme.border + "50",
                     borderRadius: 8,
                     padding: 10,
                     fontSize: 14,
                     color: Theme.textPrimary,
                     fontFamily: Fonts.bold,
                     backgroundColor: Theme.border + "10",
-                    marginBottom: 20,
+                    marginBottom: passwordError ? 6 : 20,
                     textAlign: "center",
                     minHeight: 40
                   }}
                 />
+
+                {!!passwordError && (
+                  <Text style={{ color: "#EF4444", fontSize: 12, fontFamily: Fonts.bold, textAlign: "center", marginBottom: 15 }}>
+                    {passwordError}
+                  </Text>
+                )}
 
                 <View style={{ flexDirection: "row", gap: 10 }}>
                   <TouchableOpacity
@@ -4909,6 +4927,7 @@ export default function SalesReport() {
                     }}
                     onPress={async () => {
                       try {
+                        setPasswordError("");
                         const verifyRes = await fetch(`${API_URL}/api/auth/verify`, {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
@@ -4916,6 +4935,7 @@ export default function SalesReport() {
                         });
                         const verifyData = await verifyRes.json();
                         if (!verifyData.success) {
+                          setPasswordError("Incorrect password. Please try again.");
                           showToast({ type: "error", message: "The password you entered is incorrect." });
                           return;
                         }
@@ -4925,6 +4945,7 @@ export default function SalesReport() {
                         }
                       } catch (err) {
                         console.error("Password verification error:", err);
+                        setPasswordError("Failed to verify password.");
                         showToast({ type: "error", message: "Failed to verify password" });
                       }
                     }}

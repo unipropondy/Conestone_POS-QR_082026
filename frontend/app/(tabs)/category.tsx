@@ -4287,13 +4287,13 @@ export default function Category() {
                     <View
                       style={[
                         styles.menuIconContainer,
-                        { backgroundColor: Theme.primary + "10" },
+                        { backgroundColor: "#16a34a15" },
                       ]}
                     >
                       <MaterialCommunityIcons
-                        name="card-outline"
+                        name="medal-outline"
                         size={18}
-                        color={Theme.primary}
+                        color="#16a34a"
                       />
                     </View>
                     <Text style={styles.subMenuItemText}>Loyalty</Text>
