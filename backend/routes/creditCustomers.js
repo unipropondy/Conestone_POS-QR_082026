@@ -494,11 +494,29 @@ router.get("/statement/:memberId", async (req, res) => {
     
     let runningBalance = 0;
     const transactions = result.recordset.map(t => {
-      const netEffect = parseFloat(t.BillAmount || 0) - parseFloat(t.PaidAmount || 0);
-      runningBalance += netEffect;
+      let movement = 0;
+      const type = (t.TransactionType || '').toUpperCase();
+      if (type === 'CREDIT_SALE' || type === 'DEBIT') {
+        movement = parseFloat(t.BillAmount || t.Amount || 0);
+      } else if (type === 'PAYMENT' || type === 'CREDIT') {
+        movement = -parseFloat(t.PaidAmount || t.Amount || 0);
+      } else if (type === 'ADJUSTMENT') {
+        if (parseFloat(t.BillAmount || 0) > 0) {
+          movement = parseFloat(t.BillAmount || 0);
+        } else if (parseFloat(t.PaidAmount || 0) > 0) {
+          movement = -parseFloat(t.PaidAmount || 0);
+        } else {
+          movement = parseFloat(t.Amount || 0);
+        }
+      } else {
+        movement = parseFloat(t.BillAmount || 0) - parseFloat(t.PaidAmount || 0);
+      }
+
+      runningBalance += movement;
+
       return {
         ...t,
-        Amount: parseFloat(t.Amount || 0),
+        Amount: Math.abs(parseFloat(t.Amount || 0)),
         runningBalance: parseFloat(runningBalance.toFixed(2))
       };
     });

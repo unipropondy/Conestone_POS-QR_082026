@@ -1655,7 +1655,7 @@ const fetchDayHistory = async () => {
                 </tr>
                 <tr>
                   <td style="padding-left: 10px;">Settled Today</td>
-                  <td class="right">-${formatCurrency(creditSettledToday)}</td>
+                  <td class="right">${formatCurrency(creditSettledToday)}</td>
                 </tr>
                 <tr class="bold">
                   <td style="padding-left: 10px;">Unpaid Today</td>
@@ -1773,7 +1773,7 @@ const fetchDayHistory = async () => {
       text += "[L]----------------------------------------\n";
       text += "[L]<B>CREDIT ACTIVITY</B>\n";
       text += formatTwoCols48("  Issued Today:", formatCurrency(creditIssuedToday));
-      text += formatTwoCols48("  Settled Today:", "-" + formatCurrency(creditSettledToday));
+      text += formatTwoCols48("  Settled Today:", formatCurrency(creditSettledToday));
       text += formatTwoCols48("  <B>Unpaid Today:</B>", "<B>" + formatCurrency(creditUnpaidToday) + "</B>\n");
       text += "[L]----------------------------------------\n";
       text += formatTwoCols48("<B>TOTAL MOVEMENTS:</B>", "<B>" + formatCurrency(printPaymentsTotal) + "</B>\n");
@@ -1925,7 +1925,7 @@ const fetchDayHistory = async () => {
             await SunmiModule.printText("--------------------------------\n");
             await SunmiModule.printText("CREDIT ACTIVITY\n");
             await SunmiModule.printText(formatTwoCols32("  Issued Today:", formatCurrency(creditIssuedToday)));
-            await SunmiModule.printText(formatTwoCols32("  Settled Today:", "-" + formatCurrency(creditSettledToday)));
+            await SunmiModule.printText(formatTwoCols32("  Settled Today:", formatCurrency(creditSettledToday)));
             await SunmiModule.printText(formatTwoCols32("  Unpaid Today:", formatCurrency(creditUnpaidToday)));
             await SunmiModule.printText("--------------------------------\n");
             await SunmiModule.printText(formatTwoCols32("TOTAL MOVEMENTS:", formatCurrency(printPaymentsTotal)));
@@ -2580,7 +2580,7 @@ const fetchDayHistory = async () => {
                         <View style={[styles.tableRow, { paddingVertical: 4 }]}>
                           <Text style={[styles.tableCellText, { flex: 2, color: Theme.textSecondary }]}>Settled Today</Text>
                           <Text style={[styles.tableCellText, { flex: 1, textAlign: 'right', color: Theme.success, fontFamily: Fonts.bold }]}>
-                            -{formatCurrency(creditSettledToday)}
+                            {formatCurrency(creditSettledToday)}
                           </Text>
                           <Text style={[styles.tableCellText, { flex: 1, textAlign: 'right', color: Theme.textMuted }]}>—</Text>
                         </View>
