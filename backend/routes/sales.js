@@ -284,8 +284,10 @@ router.get("/all", async (req, res) => {
              COALESCE(mm.Name, ccm.Name, mm_sale.Name, ccm_sale.Name) AS CustomerName,
              NULL AS CreditOrderNo,
              sh.GuestName as GuestName,
-             sh.Pax as Pax
+             sh.Pax as Pax,
+             COALESCE(sh.entry_status, ro.entry_status) AS entryStatus
            FROM SettlementHeader sh
+           LEFT JOIN RestaurantOrderCur ro ON sh.BillNo = ro.OrderNumber
            LEFT JOIN (
              SELECT SettlementID, LTRIM(RTRIM(PayMode)) AS PayMode, AVG(SysAmount) AS SysAmount, AVG(ManualAmount) AS ManualAmount, MAX(ReceiptCount) AS ReceiptCount
              FROM SettlementTotalSales
@@ -337,7 +339,8 @@ router.get("/all", async (req, res) => {
             COALESCE(mm.Name, m.Name) AS CustomerName,
              (SELECT TOP 1 tx.BillNo FROM CustomerCreditAllocations cca JOIN CustomerCreditTransactions tx ON cca.InvoiceTransactionId = tx.TransactionId WHERE cca.PaymentTransactionId = cct.TransactionId) AS CreditOrderNo,
             NULL AS GuestName,
-            NULL AS Pax
+            NULL AS Pax,
+            NULL AS entryStatus
           FROM CustomerCreditTransactions cct
           LEFT JOIN CreditCustomerMaster m ON cct.MemberId = m.CustomerId
           LEFT JOIN MemberMaster mm ON cct.MemberId = mm.MemberId
@@ -384,8 +387,10 @@ router.get("/all", async (req, res) => {
              COALESCE(mm.Name, ccm.Name, mm_sale.Name, ccm_sale.Name) AS CustomerName,
              NULL AS CreditOrderNo,
              sh.GuestName as GuestName,
-             sh.Pax as Pax
+             sh.Pax as Pax,
+             COALESCE(sh.entry_status, ro.entry_status) AS entryStatus
            FROM SettlementHeader sh
+           LEFT JOIN RestaurantOrderCur ro ON sh.BillNo = ro.OrderNumber
            LEFT JOIN (
              SELECT SettlementID, LTRIM(RTRIM(PayMode)) AS PayMode, AVG(SysAmount) AS SysAmount, AVG(ManualAmount) AS ManualAmount, MAX(ReceiptCount) AS ReceiptCount
              FROM SettlementTotalSales
@@ -436,7 +441,8 @@ router.get("/all", async (req, res) => {
             COALESCE(mm.Name, m.Name) AS CustomerName,
              (SELECT TOP 1 tx.BillNo FROM CustomerCreditAllocations cca JOIN CustomerCreditTransactions tx ON cca.InvoiceTransactionId = tx.TransactionId WHERE cca.PaymentTransactionId = cct.TransactionId) AS CreditOrderNo,
             NULL AS GuestName,
-            NULL AS Pax
+            NULL AS Pax,
+            NULL AS entryStatus
           FROM CustomerCreditTransactions cct
           LEFT JOIN CreditCustomerMaster m ON cct.MemberId = m.CustomerId
           LEFT JOIN MemberMaster mm ON cct.MemberId = mm.MemberId
@@ -1833,7 +1839,7 @@ router.post("/save", async (req, res) => {
       .input("LastSettlementDate", sql.DateTime, now)
       .input("SubTotal", sql.Money, subTotal || 0)
       .input("TotalTax", sql.Money, taxAmount || 0)
-      .input("DiscountAmount", sql.Money, orderDiscountAmount || 0)
+      .input("DiscountAmount", sql.Money, (Number(orderDiscountAmount) || 0) + (Number(itemDiscountAmount) || 0))
       .input("DiscountType", sql.NVarChar(50), discountType || "fixed")
       .input("BillNo", sql.NVarChar(50), finalBillNo)
       .input("OrderType", sql.NVarChar(50), orderType || "DINE-IN")
@@ -2449,7 +2455,7 @@ router.post("/save", async (req, res) => {
             .input("DiscountRemarks", sql.NVarChar(1000), discountRemarks || null)
             .input("TotalDiscountAmount", sql.Decimal(18, 2), discountAmount || 0)
             .input("TotalLineItemDiscountAmount", sql.Decimal(18, 2), itemDiscountAmount || 0)
-            .input("DiscountAmount", sql.Money, orderDiscountAmount || 0)
+            .input("DiscountAmount", sql.Money, (Number(orderDiscountAmount) || 0) + (Number(itemDiscountAmount) || 0))
             .input("RoundedBy", sql.Money, roundOff || 0)
             .input("isTakeaway", sql.Bit, (orderType === "TAKEAWAY" || !tableId || tableId === "undefined" || tableId === "null" || String(tableId).startsWith("TAKEAWAY")) ? 1 : 0)
             .input("ServiceCharge", sql.Decimal(18, 2), req.body.serviceCharge || 0)

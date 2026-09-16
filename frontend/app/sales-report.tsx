@@ -1273,6 +1273,9 @@ export default function SalesReport() {
         if (!isSubsequentSplit && !processedBills.has(s.SettlementID)) {
           processedBills.add(s.SettlementID);
           acc.TotalTransactions += 1;
+          if (s.entryStatus === "q" || s.entry_status === "q" || s.isQROrder) {
+            acc.QROrderCount += 1;
+          }
           acc.TotalItems += (s.ReceiptCount || 0);
           acc.TotalVoids += s.VoidQty || 0;
           acc.TotalVoidAmount += Math.round(((s.VoidAmount || 0) + Number.EPSILON) * 100) / 100;
@@ -1287,6 +1290,7 @@ export default function SalesReport() {
       {
         TotalSales: 0,
         TotalTransactions: 0,
+        QROrderCount: 0,
         TotalItems: 0,
         Cash: 0,
         Card: 0,
@@ -2673,6 +2677,12 @@ export default function SalesReport() {
           Theme.warning,
         )}
         {renderMetricTile(
+          "QR Orders Count",
+          filteredMetrics.QROrderCount,
+          "qr-code-outline",
+          "#8b5cf6",
+        )}
+        {renderMetricTile(
           "Items Sold",
           filteredMetrics.TotalItems,
           "fast-food-outline",
@@ -2858,7 +2868,9 @@ export default function SalesReport() {
                   s.OrderType === "TAKEAWAY" ||
                   s.Section === "TAKEAWAY" ||
                   (!s.OrderType && s.TableNo && String(s.TableNo).startsWith("TW-"));
+                const isQR = (s: any) => s.entryStatus === "q" || s.entry_status === "q" || s.isQROrder;
                 const takeaway = activeSales.filter(isTakeaway).length;
+                const qrOrders = activeSales.filter(isQR).length;
                 const dineIn = activeSales.filter(
                   (s) => !isTakeaway(s),
                 ).length;
@@ -2873,7 +2885,7 @@ export default function SalesReport() {
                       <Text
                         style={[styles.statValue, { color: Theme.primary }]}
                       >
-                        {total > 0 ? ((dineIn / total) * 100).toFixed(0) : 0}%
+                        {total > 0 ? ((dineIn / total) * 100).toFixed(0) : 0}% ({dineIn})
                       </Text>
                     </View>
                     <View style={styles.statRow}>
@@ -2884,7 +2896,18 @@ export default function SalesReport() {
                       <Text
                         style={[styles.statValue, { color: Theme.warning }]}
                       >
-                        {total > 0 ? ((takeaway / total) * 100).toFixed(0) : 0}%
+                        {total > 0 ? ((takeaway / total) * 100).toFixed(0) : 0}% ({takeaway})
+                      </Text>
+                    </View>
+                    <View style={styles.statRow}>
+                      <View style={styles.statLabel}>
+                        <Text style={styles.statIcon}>📱</Text>
+                        <Text style={styles.statName}>QR Orders</Text>
+                      </View>
+                      <Text
+                        style={[styles.statValue, { color: "#8b5cf6" }]}
+                      >
+                        {total > 0 ? ((qrOrders / total) * 100).toFixed(0) : 0}% ({qrOrders})
                       </Text>
                     </View>
                   </>
@@ -2921,6 +2944,12 @@ export default function SalesReport() {
                 <Text style={styles.metricLabel}>Conversion</Text>
                 <Text style={styles.metricValueSmall}>
                   {filteredMetrics.TotalTransactions}
+                </Text>
+              </View>
+              <View style={styles.metricRow}>
+                <Text style={styles.metricLabel}>QR Orders</Text>
+                <Text style={styles.metricValueSmall}>
+                  {filteredMetrics.QROrderCount}
                 </Text>
               </View>
               <View style={styles.metricRow}>
