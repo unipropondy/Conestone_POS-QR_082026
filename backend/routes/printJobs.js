@@ -231,6 +231,7 @@ router.post('/', authenticateBridge, async (req, res) => {
 
     // Resolve Printer IP and Name from PrintMaster
     let printerIp = '';
+    let printerPort = 9100;
     let printerName = '';
     const pType = parseInt(printerType);
 
@@ -285,13 +286,15 @@ router.post('/', authenticateBridge, async (req, res) => {
 
     const jobId = require('crypto').randomUUID();
 
+    console.log(`[PrintQueue] Queuing job -> Printer: "${printerName}" IP: "${printerIp}" Port: ${printerPort}`);
+
     // Insert the job into PrintJobQueue
     await pool.request()
       .input('JobId', sql.UniqueIdentifier, jobId)
       .input('StoreId', sql.NVarChar(50), storeId)
       .input('PrinterName', sql.NVarChar(100), printerName)
       .input('PrinterIp', sql.NVarChar(100), printerIp)
-      .input('PrinterPort', sql.Int, 9100) // Default thermal printer raw TCP port
+      .input('PrinterPort', sql.Int, printerPort) // Default thermal printer raw TCP port
       .input('Content', sql.NVarChar(sql.MAX), content)
       .query(`
         INSERT INTO PrintJobQueue (JobId, StoreId, PrinterName, PrinterIp, PrinterPort, Content, Status, CreatedOn)
@@ -316,7 +319,43 @@ router.post('/', authenticateBridge, async (req, res) => {
   }
 });
 
-// GET /api/print-jobs/status/:jobId - Check print job status
+// POST /api/print-jobs/fix-unc-jobs - One-shot repair: normalise UNC printer paths in existing FAILED/PENDING jobs
+router.post('/fix-unc-jobs', authenticateBridge, async (req, res) => {
+  try {
+    const pool = getPool();
+    // Find all jobs where PrinterIp looks like a UNC path (starts with \\ or //)
+    const badJobsRes = await pool.request().query(`
+      SELECT JobId, PrinterIp 
+      FROM PrintJobQueue 
+      WHERE (PrinterIp LIKE '\\\\%' OR PrinterIp LIKE '//%')
+        AND Status IN ('FAILED', 'PENDING', 'PROCESSING')
+    `);
+    const badJobs = badJobsRes.recordset;
+    let fixed = 0;
+    for (const job of badJobs) {
+      const rawPath = job.PrinterIp || '';
+      const stripped = rawPath.replace(/^[\\//]+/, '');
+      const host = stripped.split(/[\\//]/)[0] || 'localhost';
+      const normalizedIp = (host === '127.0.0.1' || host === '') ? 'localhost' : host;
+      await pool.request()
+        .input('JobId', sql.UniqueIdentifier, job.JobId)
+        .input('NormalizedIp', sql.NVarChar(100), normalizedIp)
+        .query(`
+          UPDATE PrintJobQueue 
+          SET PrinterIp = @NormalizedIp, Status = 'PENDING', Attempts = 0, ErrorMessage = NULL, ProcessedOn = NULL
+          WHERE JobId = @JobId
+        `);
+      console.log(`[PrintQueue] Fixed UNC job ${job.JobId}: "${rawPath}" -> "${normalizedIp}"`);
+      fixed++;
+    }
+    res.json({ success: true, fixed, message: `Fixed ${fixed} jobs with UNC printer paths` });
+  } catch (err) {
+    console.error('Error fixing UNC jobs:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
 router.get('/status/:jobId', async (req, res) => {
   try {
     const { jobId } = req.params;

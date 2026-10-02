@@ -1357,12 +1357,17 @@ class UniversalPrinter {
         const company = await BillPDFGenerator.loadSettings(outletId);
 
         // Load printer IPs dynamically from PrintMaster with caching
+        // WARNING: Always bypass cache on reprints so stale data never blocks a reprint
         let cashierIp = "";
         let takeawayIp = "";
         try {
           const now = Date.now();
           let printers = this.cachedPrinters;
-          if (!printers || (now - this.lastPrintersFetchTime > 30000)) {
+          if (!printers || isReprint || (now - this.lastPrintersFetchTime > 30000)) {
+            if (isReprint) {
+              this.cachedPrinters = null; // Force fresh fetch for reprints
+              console.log("[smartPrint] Reprint: bypassing printer cache for fresh config");
+            }
             const response = await fetch(
               `${API_URL}/api/settings/kitchen-printers`,
             );
@@ -1373,8 +1378,9 @@ class UniversalPrinter {
           if (Array.isArray(printers)) {
             const cashierPrinter = printers.find((p) => p.PrinterType === 1);
             const takeawayPrinter = printers.find((p) => p.PrinterType === 3);
-            cashierIp = cashierPrinter?.PrinterPath || "";
-            takeawayIp = takeawayPrinter?.PrinterPath || "";
+            // Read PrinterIP first, fall back to PrinterPath (USB/UNC printers may only have PrinterPath)
+            cashierIp = cashierPrinter?.PrinterIP || cashierPrinter?.PrinterPath || "";
+            takeawayIp = takeawayPrinter?.PrinterIP || takeawayPrinter?.PrinterPath || "";
           }
         } catch (err) {
           console.warn("Failed to fetch printer IPs from PrintMaster:", err);
@@ -1397,9 +1403,13 @@ class UniversalPrinter {
 
         const hasConfiguredIp = targetIp && targetIp.trim().length > 0;
 
+        // Detect USB/Windows-shared printer configured as a UNC path (e.g. \\localhost\Receipt)
+        // These CANNOT be dialled over TCP from the app - they must go through the Print Bridge APK.
+        const isUncPath = targetIp.startsWith("\\\\") || targetIp.startsWith("//");
+
         if (hasConfiguredIp) {
           console.log(`ðŸŒ Trying configured printer: ${targetIp}`);
-          const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(targetIp.trim());
+          const isIp = !isUncPath && /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(targetIp.trim());
           // 🖨️ Try Print Bridge if active on network (supports USB / Shared printers from APK)
           const isBridge = await this.isBridgeOnline();
           if (isBridge) {
@@ -1413,6 +1423,8 @@ class UniversalPrinter {
               console.warn("APK Print Bridge queue failed, trying direct connection:", bridgeErr);
             }
           }
+
+
 
           let isReachable = false;
           if (isIp) {

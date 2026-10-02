@@ -125,16 +125,31 @@ export async function sendToPrinter(ip: string, port: number, content: string, j
     const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip.trim());
 
     if (!isIp && ip.trim().length > 0) {
-      const sharePath = ip.trim().startsWith('\\\\') ? ip.trim() : `\\\\localhost\\${ip.trim()}`;
-      logger.info(`[Print Bridge] USB/Shared printer detected. Writing to path: ${sharePath}`);
-      fs.writeFile(sharePath, payload, (err: any) => {
-        if (err) {
-          logger.error(`[Print Bridge] USB/Shared print failed: ${err.message}`);
-          reject(err);
-        } else {
-          logger.info(`[Print Bridge] USB/Shared print completed successfully.`);
-          resolve();
-        }
+      // USB / Windows-shared printer path
+      // Normalise to a valid UNC path:
+      //   "Receipt"             -> \\localhost\Receipt
+      //   "\localhost\Receipt" -> \\localhost\Receipt  (single backslash -> double)
+      //   "\\localhost\Receipt" -> \\localhost\Receipt (already correct)
+      let sharePath = ip.trim();
+      if (!sharePath.startsWith('\\\\') && !sharePath.startsWith('//')) {
+        // Single backslash path or bare share name
+        sharePath = (sharePath.startsWith('\\') || sharePath.startsWith('/'))
+          ? `\\\\localhost${sharePath.replace(/^[\\]/, '')}`   // \localhost\X -> \\localhost\X
+          : `\\\\localhost\\${sharePath}`;                     // Receipt       -> \\localhost\Receipt
+      }
+
+      logger.info(`[Print Bridge] USB/Shared printer -> writing ESC/POS to: ${sharePath}`);
+
+      // IMPORTANT: Node.js fs.writeFile() does NOT support UNC paths on Windows.
+      // Use fs.createWriteStream() which correctly handles \\server\share paths.
+      const stream = fs.createWriteStream(sharePath, { flags: 'w' });
+      stream.on('error', (err: any) => {
+        logger.error(`[Print Bridge] USB/Shared print failed: ${err.message}`);
+        reject(err);
+      });
+      stream.end(payload, () => {
+        logger.info(`[Print Bridge] USB/Shared print completed successfully.`);
+        resolve();
       });
       return;
     }
