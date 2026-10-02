@@ -1,6 +1,152 @@
 import * as net from 'net';
 import * as fs from 'fs';
+import * as child_process from 'child_process';
+import * as os from 'os';
+import * as path from 'path';
 import { logger } from './logger';
+
+/**
+ * Embedded PowerShell script that invokes Win32 winspool.drv RAW printing.
+ * Bypasses GDI processor and sends raw ESC/POS bytes directly to USB/Windows printer drivers.
+ */
+const PS1_SCRIPT = `param (
+    [string]$PrinterName,
+    [string]$FilePath
+)
+
+$ErrorActionPreference = "Stop"
+
+$code = @"
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+
+public class RawPrinterHelper
+{
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public class DOCINFOA
+    {
+        [MarshalAs(UnmanagedType.LPStr)]
+        public string pDocName;
+        [MarshalAs(UnmanagedType.LPStr)]
+        public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPStr)]
+        public string pDataType;
+    }
+
+    [DllImport("winspool.Drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool OpenPrinter([MarshalAs(UnmanagedType.LPStr)] string szPrinter, out IntPtr hPrinter, IntPtr pd);
+
+    [DllImport("winspool.Drv", EntryPoint = "ClosePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.Drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool StartDocPrinter(IntPtr hPrinter, Int32 level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA di);
+
+    [DllImport("winspool.Drv", EntryPoint = "EndDocPrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool EndDocPrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.Drv", EntryPoint = "StartPagePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool StartPagePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.Drv", EntryPoint = "EndPagePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool EndPagePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.Drv", EntryPoint = "WritePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, Int32 dwCount, out Int32 dwWritten);
+
+    public static bool SendBytesToPrinter(string szPrinterName, byte[] pBytes)
+    {
+        Int32 dwWritten = 0;
+        IntPtr hPrinter = new IntPtr(0);
+        DOCINFOA di = new DOCINFOA();
+        bool bSuccess = false;
+
+        di.pDocName = "RAW POS Document";
+        di.pDataType = "RAW";
+
+        if (OpenPrinter(szPrinterName, out hPrinter, IntPtr.Zero))
+        {
+            if (StartDocPrinter(hPrinter, 1, di))
+            {
+                if (StartPagePrinter(hPrinter))
+                {
+                    IntPtr pUnmanagedBytes = Marshal.AllocCoTaskMem(pBytes.Length);
+                    Marshal.Copy(pBytes, 0, pUnmanagedBytes, pBytes.Length);
+                    bSuccess = WritePrinter(hPrinter, pUnmanagedBytes, pBytes.Length, out dwWritten);
+                    Marshal.FreeCoTaskMem(pUnmanagedBytes);
+                    EndPagePrinter(hPrinter);
+                }
+                EndDocPrinter(hPrinter);
+            }
+            ClosePrinter(hPrinter);
+        }
+        if (bSuccess == false)
+        {
+            int dwError = Marshal.GetLastWin32Error();
+            throw new Exception("Win32 Error: " + dwError);
+        }
+        return bSuccess;
+    }
+}
+"@
+
+try {
+    Add-Type -TypeDefinition $code -ErrorAction Stop
+
+    if (-not (Test-Path $FilePath)) {
+        Write-Error "File not found: $FilePath"
+        exit 1
+    }
+
+    $bytes = [System.IO.File]::ReadAllBytes($FilePath)
+    [RawPrinterHelper]::SendBytesToPrinter($PrinterName, $bytes)
+    Write-Host "SUCCESS"
+    exit 0
+} catch {
+    Write-Error $_.Exception.Message
+    exit 1
+}
+`;
+
+function ensurePs1Script(): string {
+  const scriptPath = path.join(os.tmpdir(), 'unipro_raw_print.ps1');
+  try {
+    fs.writeFileSync(scriptPath, PS1_SCRIPT, 'utf-8');
+  } catch (e) {
+    logger.error(`[Print Bridge] Failed to write temp ps1 script: ${e}`);
+  }
+  return scriptPath;
+}
+
+function printRawWindows(printerName: string, payload: Buffer): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const scriptPath = ensurePs1Script();
+    const tempBinPath = path.join(os.tmpdir(), `print_${Date.now()}_${Math.random().toString(36).substring(7)}.bin`);
+
+    fs.writeFile(tempBinPath, payload, (err) => {
+      if (err) {
+        return reject(new Error(`Failed to write temp print file: ${err.message}`));
+      }
+
+      const escapedPrinterName = printerName.replace(/"/g, '""');
+      const cmd = `powershell -ExecutionPolicy Bypass -File "${scriptPath}" -PrinterName "${escapedPrinterName}" -FilePath "${tempBinPath}"`;
+
+      child_process.exec(cmd, { timeout: 15000 }, (error, stdout, stderr) => {
+        fs.unlink(tempBinPath, () => {});
+
+        if (error || stdout.indexOf('SUCCESS') === -1) {
+          const errMsg = stderr || stdout || (error ? error.message : 'Unknown RAW print error');
+          logger.error(`[Print Bridge] USB/Windows RAW print failed for printer '${printerName}': ${errMsg}`);
+          return reject(new Error(`Windows RAW print failed: ${errMsg}`));
+        }
+
+        logger.info(`[Print Bridge] USB/Windows RAW print completed successfully for printer '${printerName}'`);
+        resolve();
+      });
+    });
+  });
+}
 
 /**
  * Parses tags like [C], [L], [R], <B>, </B>, <font size='big'> to ESC/POS binary buffers.
@@ -79,12 +225,9 @@ export function checkPrinterReachable(ip: string, port: number = 9100, timeoutMs
 }
 
 /**
- * Sends a raw data payload to a LAN/Wi-Fi thermal printer using a TCP socket connection.
+ * Sends a raw data payload to a LAN/Wi-Fi or USB thermal printer.
  * Supports both base64 binary encoding and standard UTF-8 string encoding with tag translation.
  */
-// Known cash drawer base64 payloads — these must be sent as raw binary with
-// NO printer initialization (ESC @) or line feeds prepended, as that causes
-// the printer to advance paper before executing the drawer-open pulse.
 const CASH_DRAWER_PAYLOADS = new Set([
   'G3AAGRk=',   // ESC p 0 25 25 — standard drawer open
   'EBQBAAU=',   // DLE DC4 1 0 5 — real-time drawer open (no paper feed)
@@ -109,7 +252,6 @@ export async function sendToPrinter(ip: string, port: number, content: string, j
     const isCashDrawerCommand = CASH_DRAWER_PAYLOADS.has(trimmed);
 
     if (isCashDrawerCommand) {
-      // Decode the drawer command to pure binary — no extra bytes, no init
       payload = Buffer.from(trimmed, 'base64');
       console.log(`\n[CashDrawer] Opening drawer (raw binary only, no paper feed)\n`);
     } else if (isBase64) {
@@ -125,23 +267,28 @@ export async function sendToPrinter(ip: string, port: number, content: string, j
     const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip.trim());
 
     if (!isIp && ip.trim().length > 0) {
-      // USB / Windows-shared printer path
-      // Normalise to a valid UNC path:
-      //   "Receipt"             -> \\localhost\Receipt
-      //   "\localhost\Receipt" -> \\localhost\Receipt  (single backslash -> double)
-      //   "\\localhost\Receipt" -> \\localhost\Receipt (already correct)
-      let sharePath = ip.trim();
-      if (!sharePath.startsWith('\\\\') && !sharePath.startsWith('//')) {
-        // Single backslash path or bare share name
-        sharePath = (sharePath.startsWith('\\') || sharePath.startsWith('/'))
-          ? `\\\\localhost${sharePath.replace(/^[\\]/, '')}`   // \localhost\X -> \\localhost\X
-          : `\\\\localhost\\${sharePath}`;                     // Receipt       -> \\localhost\Receipt
+      let printerName = ip.trim();
+      // Strip leading UNC/local prefixes like \\localhost\, \localhost\, //localhost/, /localhost/, \\127.0.0.1\
+      printerName = printerName.replace(/^([\\/]{1,2})(localhost|127\.0\.0\.1)[\\/]/i, '');
+      printerName = printerName.replace(/^[\\/]/, '');
+
+      logger.info(`[Print Bridge] USB/Local printer -> target printer name: '${printerName}' (raw input: '${ip}')`);
+
+      if (process.platform === 'win32') {
+        printRawWindows(printerName, payload)
+          .then(resolve)
+          .catch(reject);
+        return;
       }
 
-      logger.info(`[Print Bridge] USB/Shared printer -> writing ESC/POS to: ${sharePath}`);
+      // Fallback for non-Windows (or UNC file streams)
+      let sharePath = ip.trim();
+      if (!sharePath.startsWith('\\\\') && !sharePath.startsWith('//')) {
+        sharePath = (sharePath.startsWith('\\') || sharePath.startsWith('/'))
+          ? `\\\\localhost${sharePath.replace(/^[\\]/, '')}`
+          : `\\\\localhost\\${sharePath}`;
+      }
 
-      // IMPORTANT: Node.js fs.writeFile() does NOT support UNC paths on Windows.
-      // Use fs.createWriteStream() which correctly handles \\server\share paths.
       const stream = fs.createWriteStream(sharePath, { flags: 'w' });
       stream.on('error', (err: any) => {
         logger.error(`[Print Bridge] USB/Shared print failed: ${err.message}`);
