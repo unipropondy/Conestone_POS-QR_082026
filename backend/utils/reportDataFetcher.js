@@ -75,6 +75,7 @@ async function fetchFullReportData(startDateStr, endDateStr, pool) {
       CAST(cct.CreatedBy AS VARCHAR(50)) AS CashierId,
       cct.Remarks AS BillNo,
       'Cashier' AS SER_NAME,
+      NULL AS entryStatus,
       cct.PaymentMethod AS RawPayMode,
       cct.PaidAmount AS SysAmount,
       cct.PaidAmount AS SubTotal,
@@ -124,6 +125,7 @@ async function fetchFullReportData(startDateStr, endDateStr, pool) {
 
   let dineInCount = 0;
   let takeawayCount = 0;
+  let qrOrderCount = 0;
 
   // Deduplicate sales by SettlementID + PayMode (or combined) to count transactions properly
   const uniqueTransactions = new Map();
@@ -203,11 +205,17 @@ async function fetchFullReportData(startDateStr, endDateStr, pool) {
       }
     }
 
-    const isTakeaway = s.OrderType === "TAKEAWAY" || s.Section === "TAKEAWAY" || (!s.OrderType && s.TableNo && String(s.TableNo).startsWith("TW-"));
-    if (isTakeaway) {
-      takeawayCount += 1;
-    } else {
-      dineInCount += 1;
+    if (!isSubsequentSplit) {
+      const isTakeaway = s.OrderType === "TAKEAWAY" || s.Section === "TAKEAWAY" || (!s.OrderType && s.TableNo && String(s.TableNo).startsWith("TW-"));
+      if (isTakeaway) {
+        takeawayCount += 1;
+      } else {
+        dineInCount += 1;
+      }
+      const isQR = s.entryStatus === "q" || s.entry_status === "q" || s.isQROrder;
+      if (isQR) {
+        qrOrderCount += 1;
+      }
     }
   });
 

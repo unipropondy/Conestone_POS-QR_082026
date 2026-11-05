@@ -880,7 +880,14 @@ export default function SalesReport() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reportData }),
       });
-      if (!response.ok) throw new Error("Failed to generate PDF");
+      if (!response.ok) {
+        let errMessage = "Failed to generate PDF";
+        try {
+          const errData = await response.json();
+          if (errData?.error) errMessage = errData.error;
+        } catch (_) {}
+        throw new Error(errMessage);
+      }
 
       const arrayBuffer = await response.arrayBuffer();
 
@@ -890,8 +897,10 @@ export default function SalesReport() {
         const a = document.createElement("a");
         a.href = url;
         a.download = filename;
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
       } else {
         const uri = `${FileSystemLegacy.documentDirectory}${filename}`;
         await FileSystemLegacy.writeAsStringAsync(uri, arrayBufferToBase64(arrayBuffer), {
@@ -905,9 +914,9 @@ export default function SalesReport() {
       }
 
       setShowDownloadPanel(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Download error:", error);
-      alert("An error occurred while generating the PDF.");
+      alert(error?.message || "An error occurred while generating the PDF.");
     } finally {
       setIsDownloading(false);
     }

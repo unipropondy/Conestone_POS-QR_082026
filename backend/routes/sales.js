@@ -25,7 +25,7 @@ const generateRandomBillId = () => {
 };
 
 const normalizeReportPayModeSql = (columnName = "sts.PayMode", settlementIdColumn = "sh.SettlementID") => {
-  const resolvedPayMode = `COALESCE((
+  const resolvedPayMode = `COALESCE(${columnName}, (
     SELECT TOP 1 LTRIM(RTRIM(pd2.Remarks))
     FROM (
       SELECT Remarks, RestaurantBillId FROM PaymentDetailCur WHERE Remarks IS NOT NULL AND LTRIM(RTRIM(Remarks)) <> ''
@@ -33,7 +33,7 @@ const normalizeReportPayModeSql = (columnName = "sts.PayMode", settlementIdColum
       SELECT Remarks, RestaurantBillId FROM PaymentDetail WHERE Remarks IS NOT NULL AND LTRIM(RTRIM(Remarks)) <> ''
     ) pd2
     WHERE pd2.RestaurantBillId = ${settlementIdColumn}
-  ), ${columnName})`;
+  ))`;
 
   const rawSql = `
     UPPER(ISNULL(
@@ -93,7 +93,7 @@ const resolveBusinessDateColumn = (col) => {
   }
   if (cleanCol.includes("ptd.CreatedDate") || cleanCol.includes("ptd.CreatedOn")) {
     const prefix = cleanCol.includes(".") ? cleanCol.split(".")[0] + "." : "";
-    return `COALESCE(${prefix}start_date, ${prefix}CreatedDate, ${prefix}CreatedOn)`;
+    return `COALESCE(${prefix}start_date, ${prefix}CreatedDate)`;
   }
   if (cleanCol.includes("InvoiceDate")) {
     const prefix = cleanCol.includes(".") ? cleanCol.split(".")[0] + "." : "";

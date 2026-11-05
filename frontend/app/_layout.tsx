@@ -281,10 +281,18 @@ const TERMINAL_POLICY: NetworkPolicy = {
   budget: 170000,
 };
 
+const REPORT_POLICY: NetworkPolicy = {
+  timeout: 60000, // 60 seconds to allow large aggregate sales reports (monthly/yearly)
+  maxRetries: 2,
+  initialDelay: 500,
+  budget: 130000,
+};
+
 const classifyRequest = (url: string): NetworkPolicy => {
   if (!url) return NORMAL_POLICY;
   if (url.includes("/health")) return HEALTH_POLICY;
   if (url.includes("/yeahpay") || url.includes("yeahpay")) return TERMINAL_POLICY;
+  if (url.includes("/sales") || url.includes("/reports") || url.includes("/export")) return REPORT_POLICY;
 
   const criticalKeywords = [
     "checkout",
