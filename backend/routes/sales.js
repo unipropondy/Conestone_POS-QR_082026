@@ -1834,12 +1834,18 @@ router.post("/save", async (req, res) => {
     const normalizedPayMode = normalizePayMode(paymentMethod);
     const payModeCode = normalizedPayMode === "CASH" ? 1 : normalizedPayMode === "CARD" ? 2 : 3;
 
+    const totalLineItemDisc = Number(itemDiscountAmount) || 0;
+    const billOrderDisc = Number(orderDiscountAmount) || 0;
+    // SettlementHeader.DiscountAmount should reflect only the bill-level discount because SubTotal is already post-item-discount.
+    // If there is no bill-level discount, DiscountAmount is 0 (so views don't double-deduct item discounts).
+    const settlementDiscountAmount = billOrderDisc > 0 ? billOrderDisc : 0;
+
     const headerResult = await transaction.request()
       .input("SettlementID", sql.UniqueIdentifier, settlementId)
       .input("LastSettlementDate", sql.DateTime, now)
       .input("SubTotal", sql.Money, subTotal || 0)
       .input("TotalTax", sql.Money, taxAmount || 0)
-      .input("DiscountAmount", sql.Money, (Number(orderDiscountAmount) || 0) + (Number(itemDiscountAmount) || 0))
+      .input("DiscountAmount", sql.Money, settlementDiscountAmount)
       .input("DiscountType", sql.NVarChar(50), discountType || "fixed")
       .input("BillNo", sql.NVarChar(50), finalBillNo)
       .input("OrderType", sql.NVarChar(50), orderType || "DINE-IN")
@@ -1923,12 +1929,12 @@ router.post("/save", async (req, res) => {
       console.log(`[SAVE SALE] Step 3: Inserting Settlement Tables (ID: ${settlementId})...`);
       
       if (payments && Array.isArray(payments) && payments.length > 0) {
-        if (Number(discountAmount) > 0) {
+        if (Number(settlementDiscountAmount) > 0) {
           const discReq = transaction.request()
             .input("SettlementID", sql.UniqueIdentifier, settlementId)
             .input("DiscountID", sql.UniqueIdentifier, DEFAULT_GUID)
             .input("DiscountDesc", sql.VarChar(255), String(discountType || "Fixed") + " Discount")
-            .input("DiscAmount", sql.Money, discountAmount);
+            .input("DiscAmount", sql.Money, settlementDiscountAmount);
           await discReq.query(`
             INSERT INTO SettlementDiscountDetail (SettlementId, DiscountId, Description, SysAmount, ManualAmount, SortageOrExces)
             VALUES (@SettlementID, @DiscountID, @DiscountDesc, @DiscAmount, @DiscAmount, 0);
@@ -1953,7 +1959,7 @@ router.post("/save", async (req, res) => {
           `;
         }
 
-        if (Number(discountAmount) > 0) {
+        if (Number(settlementDiscountAmount) > 0) {
           settlementSql += `
             INSERT INTO SettlementDiscountDetail (SettlementId, DiscountId, Description, SysAmount, ManualAmount, SortageOrExces)
             VALUES (@SettlementID, @DiscountID, @DiscountDesc, @DiscAmount, @DiscAmount, 0);
@@ -1968,10 +1974,10 @@ router.post("/save", async (req, res) => {
           .input("AmountDiff", sql.Money, 0)
           .input("ReceiptCount", sql.Numeric(18, 0), receiptCount);
 
-        if (Number(discountAmount) > 0) {
+        if (Number(settlementDiscountAmount) > 0) {
           settlementReq.input("DiscountID", sql.UniqueIdentifier, DEFAULT_GUID)
             .input("DiscountDesc", sql.VarChar(255), String(discountType || "Fixed") + " Discount")
-            .input("DiscAmount", sql.Money, discountAmount);
+            .input("DiscAmount", sql.Money, settlementDiscountAmount);
         }
 
         await settlementReq.query(settlementSql);

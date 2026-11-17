@@ -1859,6 +1859,11 @@ class UniversalPrinter {
     const focAmt = focPayment ? Number(focPayment.amount ?? focPayment.Amount ?? 0) : 0;
     
     let orderDiscount = finalDiscountInfo?.amount || saleData.discountAmount || 0;
+    // If orderDiscount equals totalItemDiscount (or totalItemDiscount > 0 and no separate bill discount info was applied),
+    // avoid double counting item discount as order/bill discount.
+    if (totalItemDiscount > 0 && orderDiscount === totalItemDiscount && (!discountInfo || !discountInfo.applied)) {
+      orderDiscount = 0;
+    }
     if (orderDiscount === 0 && finalDiscountInfo && finalDiscountInfo.applied !== false && finalDiscountInfo.value > 0) {
       const subtotalPostItemDisc = Math.max(0, grossTotal - totalItemDiscount);
       if (finalDiscountInfo.type === "percentage") {

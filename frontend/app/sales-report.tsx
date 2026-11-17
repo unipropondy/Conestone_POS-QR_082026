@@ -290,11 +290,13 @@ export default function SalesReport() {
   };
 
   const finalBillAmount = selectedOrder
-    ? Number(selectedOrder.SubTotal || 0) -
-      Number(selectedOrder.DiscountAmount || 0) +
-      Number(selectedOrder.ServiceCharge || 0) +
-      Number(selectedOrder.TakeawayCharge || 0) +
-      Number(selectedOrder.TotalTax || 0)
+    ? (Number(selectedOrder.SysAmount) > 0
+        ? Number(selectedOrder.SysAmount)
+        : Number(selectedOrder.SubTotal || 0) -
+          Number(selectedOrder.DiscountAmount || 0) +
+          Number(selectedOrder.ServiceCharge || 0) +
+          Number(selectedOrder.TakeawayCharge || 0) +
+          Number(selectedOrder.TotalTax || 0))
     : 0;
 
   const allocatedSplitsSum = useMemo(() => {
@@ -3736,10 +3738,18 @@ export default function SalesReport() {
                   )}
                   {(() => {
                     const regularDiscountAmt = Number(selectedOrder?.DiscountAmount || 0);
+                    // If SubTotal + ServiceCharge equals SysAmount, SubTotal was already reduced by item discounts
+                    // and DiscountAmount was saved redundantly. In that case, do not display a phantom extra discount row.
+                    const sub = Number(selectedOrder?.SubTotal || 0);
+                    const sc = Number(selectedOrder?.ServiceCharge || 0);
+                    const tax = Number(selectedOrder?.TotalTax || 0);
+                    const tc = Number(selectedOrder?.TakeawayCharge || 0);
+                    const sysAmt = Number(selectedOrder?.SysAmount || 0);
+                    const isRedundantItemDiscount = regularDiscountAmt > 0 && Math.abs((sub + sc + tax + tc) - sysAmt) < 0.05;
 
                     return (
                       <>
-                        {regularDiscountAmt > 0 && (
+                        {regularDiscountAmt > 0 && !isRedundantItemDiscount && (
                           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                               <Text style={{ fontSize: 12, fontFamily: Fonts.semiBold, color: Theme.success }}>Discount</Text>
